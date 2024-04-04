@@ -33,6 +33,7 @@ Param(
 
 [parameter(Mandatory=$true,ParameterSetName="NormalRun")]
 [alias("sa")]
+<#
 [ValidateScript({
  
         if  ($_ -match ".\\.")    {
@@ -64,7 +65,7 @@ Param(
        }
         
     
-)]
+)] #>
 [string]$NDESServiceAccount,
 
 [parameter(Mandatory=$true,ParameterSetName="NormalRun")]
@@ -169,6 +170,26 @@ function Get-NDESHelp {
 
 #######################################################################
 
+function Get-NDESServiceAcct {
+    
+    if (  ($null -eq $NDESServiceAccount) -or ($NDESServiceAccount -eq "") ) {
+
+
+        if ( (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\PFXCertificateConnector\CA*").UseSystemAccount -eq 1) {
+            $NDESServiceAccount = (Get-ADDomain).NetBIOSName + "`\" + $env:computerName  
+            $Script:SvcAcctIsComputer = $true
+
+        }
+        elseif (    (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\PFXCertificateConnector\CA*").Username -ne "" ) {
+             $NDESServiceAccount =  (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\PFXCertificateConnector\CA*").Username 
+        }
+    }
+ 
+    $NDESServiceAccount
+
+}
+
+#######################################################################
     if ($help){
 
         Get-NDESHelp
@@ -195,14 +216,19 @@ New-Item -ItemType Directory -Path (Join-Path $parent $name) | Out-Null
 $TempDirPath = "$parent$name"
 $LogFilePath = "$($TempDirPath)\Validate-NDESConfig.log"
 
+
 #######################################################################
 
 #region Proceed with Variables...
+    # Flag to query computer vs user properties from AD
+    [bool]$SvcAcctIsComputer = $false
 
-
+    $NDESServiceAccount = Get-NDESServiceAcct
     
+    $NDESServiceAccount
+
     if ($PSCmdlet.ParameterSetName -eq "Unattended") {
-        $NDESServiceAccount = (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\PFXCertificateConnector\CA*").Username
+        
         $MscepRaEku = '1.3.6.1.4.1.311.20.2.1' # CEP Encryption
         # Get cert authority from the Certificate Request Agent cert.
         $IssuingCAServerFQDN = Get-Item 'Cert:\LocalMachine\My\*' | where { ($_.EnhancedKeyUsageList  -match $MscepRaEku) -and ($_.Extensions.Format(1)[0].split('(')[0] -replace "template="  -match "CEPEncryption" ) }
@@ -214,7 +240,7 @@ $LogFilePath = "$($TempDirPath)\Validate-NDESConfig.log"
             Write-Output ""
             Write-Output "......................................................."
             Write-Output ""
-            Write-Output "NDES Service Account = "-NoNewline 
+            Write-Output "NDES Service Account = " -NoNewline 
             Write-Output "$($NDESServiceAccount)" 
             Write-Output ""
             Write-Output "Issuing CA Server = "
@@ -311,19 +337,23 @@ $MinOSVersion = "6.3"
 #######################################################################
     
 #region Checking NDES Service Account properties in Active Directory
-
+$NDESServiceAccount = Get-NDESServiceAcct
 Write-Output ""
 Write-Output "......................................................."
 Write-Output ""
 Write-Output "Checking NDES Service Account properties in Active Directory..." 
 Write-Output ""
 Log-ScriptEvent $LogFilePath "Checking NDES Service Account properties in Active Directory" NDES_Validation 1
+ 
+$ADAccount = $NDESServiceAccount.split("\")[1]
+if ($SvcAcctIsComputer ) {
+    $ADAccountProps = (Get-ADComputer $ADAccount -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut)
+}
+else {
+    $ADAccountProps = (Get-ADUser $ADAccount -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut)
+}
 
-$ADUser = $NDESServiceAccount.split("\")[1]
-$ADUserProps = (Get-ADUser $ADUser -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut)
-
-
-    if ($ADUserProps.enabled -ne $TRUE -OR $ADUserProps.PasswordExpired -ne $false -OR $ADUserProps.LockedOut -eq $TRUE){
+    if ($ADAccountProps.enabled -ne $TRUE -OR $ADAccountProps.PasswordExpired -ne $false -OR $ADAccountProps.LockedOut -eq $TRUE){
         
         Write-Output "Error: Problem with the AD account. Please see output below to determine the issue" 
         Write-Output ""
@@ -340,7 +370,7 @@ $ADUserProps = (Get-ADUser $ADUser -Properties SamAccountName,enabled,AccountExp
     }
 
 
-Get-ADUser $ADUser -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut | fl SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut
+$ADAccountProps | fl SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut
     
 #endregion
 
@@ -400,8 +430,14 @@ Log-ScriptEvent $LogFilePath "Checking NDES Service Account local permissions" N
             $TempFile = [System.IO.Path]::GetTempFileName()
             & "secedit" "/export" "/cfg" "$TempFile" | Out-Null
             $LocalSecPol = Get-Content $TempFile
-            $ADUserProps = Get-ADUser $ADUser
-            $NDESSVCAccountSID = $ADUserProps.SID.Value 
+            $ADAccount = $NDESServiceAccount.split("\")[1]
+            if ($SvcAcctIsComputer ) {
+                $ADAccountProps = (Get-ADComputer $ADAccount -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut)
+            }
+            else {
+                $ADAccountProps = (Get-ADUser $ADAccount -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut)
+            }
+            $NDESSVCAccountSID = $ADAccountProps.SID.Value 
             $LocalSecPolResults = $LocalSecPol | Select-String $NDESSVCAccountSID
 
                 if ($LocalSecPolResults -match "SeInteractiveLogonRight" -AND $LocalSecPolResults -match "SeBatchLogonRight" -AND $LocalSecPolResults -match "SeServiceLogonRight"){
@@ -684,7 +720,7 @@ Log-ScriptEvent $LogFilePath "Checking SPN has been set" NDES_Validation 1
 
 $hostname = ([System.Net.Dns]::GetHostByName(($env:computerName))).hostname
 
-$spn = setspn.exe -L $ADUser
+$spn = setspn.exe -L $ADAccount
 
     if ($spn -match $hostname){
     
