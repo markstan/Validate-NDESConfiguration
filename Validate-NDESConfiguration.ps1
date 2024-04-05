@@ -33,7 +33,6 @@ Param(
 
 [parameter(Mandatory=$true,ParameterSetName="NormalRun")]
 [alias("sa")]
-<#
 [ValidateScript({
  
         if  ($_ -match ".\\.")    {
@@ -65,7 +64,7 @@ Param(
        }
         
     
-)] #>
+)]  
 [string]$NDESServiceAccount,
 
 [parameter(Mandatory=$true,ParameterSetName="NormalRun")]
@@ -1569,6 +1568,7 @@ else {
     Write-Output "Success: " 
     Write-Output "Log files copied to $($Currentlocation)\$($date)-CertConnectorLogs-$($hostname).zip"
     Write-Output ""
+    Start-Process $Currentlocation
     }
 
     else {
