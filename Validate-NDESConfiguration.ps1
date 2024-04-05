@@ -21,6 +21,7 @@ https://learn.microsoft.com/en-us/troubleshoot/mem/intune/certificates/troublesh
 
 .NOTES
 v1.0 - 1/29/2024 - Initial release. Copy/paste from ODC (https://aka.ms/IntuneODC) to allow for standalone use.
+v1.1 - 5/4/2024 - Updated to support system account as service account
 
 #>
 [CmdletBinding(DefaultParameterSetName="Unattended")]
@@ -168,7 +169,17 @@ function Get-NDESHelp {
 }
 
 #######################################################################
+function Set-ServiceAccountisLocalSystem {
+Param(
+    [parameter(Mandatory=$true)]
+    [bool]$isSvcAcctLclSystem
+    )
 
+    $Script:SvcAcctIsComputer = $isSvcAcctLclSystem
+    Log-ScriptEvent $LogFilePath "Service account is local system (computer) account = $isSvcAcctLclSystem" NDES_Validation 1
+    }
+
+#######################################################################
 function Get-NDESServiceAcct {
     
     if (  ($null -eq $NDESServiceAccount) -or ($NDESServiceAccount -eq "") ) {
@@ -176,14 +187,15 @@ function Get-NDESServiceAcct {
 
         if ( (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\PFXCertificateConnector\CA*").UseSystemAccount -eq 1) {
             $NDESServiceAccount = (Get-ADDomain).NetBIOSName + "`\" + $env:computerName  
-            $Script:SvcAcctIsComputer = $true
+            Set-ServiceAccountisLocalSystem $true
 
         }
         elseif (    (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\PFXCertificateConnector\CA*").Username -ne "" ) {
              $NDESServiceAccount =  (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\PFXCertificateConnector\CA*").Username 
         }
     }
- 
+    Log-ScriptEvent $LogFilePath "Service Account detected = $NDESServiceAccount" NDES_Validation 1
+    
     $NDESServiceAccount
 
 }
@@ -223,8 +235,6 @@ $LogFilePath = "$($TempDirPath)\Validate-NDESConfig.log"
     [bool]$SvcAcctIsComputer = $false
 
     $NDESServiceAccount = Get-NDESServiceAcct
-    
-    $NDESServiceAccount
 
     if ($PSCmdlet.ParameterSetName -eq "Unattended") {
         
@@ -316,17 +326,15 @@ $MinOSVersion = "6.3"
 
     if ([version]$OSVersion -lt [version]$MinOSVersion){
     
-        Write-Output "Error: Unsupported OS Version. NDES Requires 2012 R2 and above." 
-        Log-ScriptEvent $LogFilePath "Unsupported OS Version. NDES Requires 2012 R2 and above." NDES_Validation 3
+        Write-Output "Error: Unsupported OS Version. NDES requires Windows Server 2012 R2 and above." 
+        Log-ScriptEvent $LogFilePath "Unsupported OS Version. NDES requires Windows Server 2012 R2 and above." NDES_Validation 3
         
         } 
     
     else {
     
         Write-Output "Success: " 
-        Write-Output "OS Version "
-        Write-Output "$($OSVersion)" 
-        Write-Output " supported."
+        Write-Output "OS Version: $OSVersion is supported."
         Log-ScriptEvent $LogFilePath "Server is version $($OSVersion)" NDES_Validation 1
     
     }
@@ -383,14 +391,22 @@ Write-Output ""
 Write-Output "Checking NDES Service Account local permissions..." 
 Write-Output ""
 Log-ScriptEvent $LogFilePath "Checking NDES Service Account local permissions" NDES_Validation 1 
-
+if ($SvcAcctIsComputer) {
+    Write-Output ""
+    Write-Output "......................................................."
+    Write-Output ""
+    Write-Output "Skipping NDES Service Account local permissions since local system is used as the service account..." 
+    Write-Output ""
+    Log-ScriptEvent $LogFilePath "Skipping NDES Service Account local permissions since local system is used as the service account" NDES_Validation 1 
+}
+else {
    if ((net localgroup) -match "Administrators"){
 
     $LocalAdminsMember = ((net localgroup Administrators))
 
         if ($LocalAdminsMember -like "*$NDESServiceAccount*"){
         
-            Write-Warning "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use IIS_IUSERS instead."
+            Write-Warning "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use the IIS_IUSERS local group instead."
             Log-ScriptEvent $LogFilePath "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use IIS_IUSERS instead."  NDES_Validation 2
 
         }
@@ -430,12 +446,9 @@ Log-ScriptEvent $LogFilePath "Checking NDES Service Account local permissions" N
             & "secedit" "/export" "/cfg" "$TempFile" | Out-Null
             $LocalSecPol = Get-Content $TempFile
             $ADAccount = $NDESServiceAccount.split("\")[1]
-            if ($SvcAcctIsComputer ) {
-                $ADAccountProps = (Get-ADComputer $ADAccount -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut)
-            }
-            else {
-                $ADAccountProps = (Get-ADUser $ADAccount -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut)
-            }
+            # we should only be checking user accounts. If local system is the service account, we can skip this event
+            $ADAccountProps = (Get-ADUser $ADAccount -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut)
+         
             $NDESSVCAccountSID = $ADAccountProps.SID.Value 
             $LocalSecPolResults = $LocalSecPol | Select-String $NDESSVCAccountSID
 
@@ -480,10 +493,12 @@ Log-ScriptEvent $LogFilePath "Checking NDES Service Account local permissions" N
 
    else {
 
-        Write-Warning "No local Administrators group exists, likely due to this being a Domain Controller. It is not recommended to run NDES on a Domain Controller."
-        Log-ScriptEvent $LogFilePath "No local Administrators group exists, likely due to this being a Domain Controller. It is not recommended to run NDES on a Domain Controller." NDES_Validation 2
+        Write-Warning "No local Administrators group exists, likely due to this being a Domain Controller or renaming the group. It is not recommended to run NDES on a Domain Controller."
+        Log-ScriptEvent $LogFilePath "No local Administrators group exists, likely due to this being a Domain Controller or renaming the group. It is not recommended to run NDES on a Domain Controller." NDES_Validation 2
     
     }
+
+}
 
 #endregion
 
@@ -602,22 +617,32 @@ Log-ScriptEvent $LogFilePath "Checking IIS Application Pool health" NDES_Validat
         
         }
     
-        if ($IISSCEPAppPoolAccount -contains "$NDESServiceAccount"){
-            
-        Write-Output "Success: " 
-        Write-Output "Application Pool is configured to use "
-        Write-Output "$($IISSCEPAppPoolAccount)"
-        Log-ScriptEvent $LogFilePath "Application Pool is configured to use $($IISSCEPAppPoolAccount)"  NDES_Validation 1
-            
+        if ($SvcAcctIsComputer) {
+            Write-Output ""
+            Write-Output "......................................................."
+            Write-Output ""
+            Write-Output "Skipping application pool account check since local system is used as the service account..." 
+            Write-Output ""
+            Log-ScriptEvent $LogFilePath "Skipping application pool account check since local system is used as the service account" NDES_Validation 1 
         }
-            
         else {
-
-        Write-Output "Error: Application Pool is not configured to use the NDES Service Account"  
-        Write-Output 'Please review "Step 4.1 - Configure NDES for use with Intune".' 
-        Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure" 
-        Log-ScriptEvent $LogFilePath "Application Pool is not configured to use the NDES Service Account"  NDES_Validation 3
+            if ($IISSCEPAppPoolAccount -contains "$NDESServiceAccount"){
             
+            Write-Output "Success: " 
+            Write-Output "Application Pool is configured to use "
+            Write-Output "$($IISSCEPAppPoolAccount)"
+            Log-ScriptEvent $LogFilePath "Application Pool is configured to use $($IISSCEPAppPoolAccount)"  NDES_Validation 1
+            
+            }
+            
+            else {
+
+            Write-Output "Error: Application Pool is not configured to use the NDES Service Account"  
+            Write-Output 'Please review "Step 4.1 - Configure NDES for use with Intune".' 
+            Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure" 
+            Log-ScriptEvent $LogFilePath "Application Pool is not configured to use the NDES Service Account"  NDES_Validation 3
+            
+            }
         }
                 
         if ($SCEPAppPoolRunning){
@@ -631,7 +656,7 @@ Log-ScriptEvent $LogFilePath "Checking IIS Application Pool health" NDES_Validat
         else {
 
             Write-Output "Error: SCEP Application Pool is stopped!"  
-            Write-Output "Please start the SCEP Application Pool via IIS Management Console. You should also review the Application Event log output for Errors"
+            Write-Output "Please start the SCEP Application Pool via IIS Management Console. You should also review the Application Event log output for errors"
             Log-ScriptEvent $LogFilePath "SCEP Application Pool is stopped"  NDES_Validation 3
                 
         }
@@ -641,7 +666,7 @@ Log-ScriptEvent $LogFilePath "Checking IIS Application Pool health" NDES_Validat
     else {
 
         Write-Output "IIS is not installed." 
-        Log-ScriptEvent $LogFilePath "SCEP Application Pool is stopped"  NDES_Validation 3 
+        Log-ScriptEvent $LogFilePath "IIS is not installed"  NDES_Validation 3 
 
     }
 
@@ -1217,7 +1242,7 @@ $Statuscode = try {(Invoke-WebRequest -Uri https://$hostname/certsrv/mscep/mscep
     if ($statuscode -eq "200"){
 
     Write-Output "Error: https://$hostname/certsrv/mscep/mscep.dll returns 200 OK. This usually signifies an error with the Intune Connector registering itself or not being installed." 
-    Log-ScriptEvent $LogFilePath "https://$hostname/certsrv/mscep/mscep.dll returns 200 OK. This usually signifies an error with the Intune Connector registering itself or not being installed"  NDES_Validation 3
+    Log-ScriptEvent $LogFilePath "https://$hostname/certsrv/mscep/mscep.dll returns 200 OK. This usually signifies an error with the Intune Connector registering itself or the service is not installed"  NDES_Validation 3
     } 
 
     elseif ($statuscode -eq "403"){
@@ -1248,7 +1273,7 @@ $Statuscode = try {(Invoke-WebRequest -Uri https://$hostname/certsrv/mscep/mscep
     
         Write-Output "Error: Unexpected Error code! This usually signifies an error with the Intune Connector registering itself or not being installed" 
         Write-Output "Expected value is a 403. We received a $($Statuscode). This could be down to a missing reboot post policy module install. Verify last boot time and module install time further down the validation."
-        Log-ScriptEvent $LogFilePath "Unexpected Error code. Expected:403|Received:$Statuscode"  NDES_Validation 3
+        Log-ScriptEvent $LogFilePath "Unexpected Error code. Expected: 403 | Received: $Statuscode"  NDES_Validation 3
     
    }
         
@@ -1268,8 +1293,7 @@ Log-ScriptEvent $LogFilePath "Checking Servers last boot time" NDES_Validation 1
 $LastBoot = (Get-WmiObject win32_operatingsystem | select csname, @{LABEL='LastBootUpTime'
 ;EXPRESSION={$_.ConverttoDateTime($_.lastbootuptime)}}).lastbootuptime
 
-Write-Output "Server last rebooted: "-NoNewline
-Write-Output "$($LastBoot). " 
+Write-Output "Server last rebooted: $($LastBoot). `r`n" 
 Write-Output "Please ensure a reboot has taken place _after_ all registry changes and installing the NDES Connector. IISRESET is _not_ sufficient."
 Log-ScriptEvent $LogFilePath "LastBootTime:$LastBoot"  NDES_Validation 1
 
@@ -1288,13 +1312,11 @@ Log-ScriptEvent $LogFilePath "Checking Intune Connector is installed" NDES_Valid
 
     if ($IntuneConnector = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |  Select-Object DisplayName, DisplayVersion, Publisher, InstallDate | ? {$_.DisplayName -eq "Certificate Connector for Microsoft Intune"}){
 
+        $installDate = [datetime]::ParseExact($IntuneConnector.InstallDate, 'yyyymmdd', $null).tostring('dd-mm-yyyy')
         Write-Output "Success: " 
-        Write-Output "$($IntuneConnector.DisplayName) was installed on " 
-        Write-Output "$($IntuneConnector.InstallDate) "  
-        Write-Output "and is version "
-        Write-Output "$($IntuneConnector.DisplayVersion)" 
+        Write-Output "$($IntuneConnector.DisplayName) was installed on $installDate and is version $($IntuneConnector.DisplayVersion)" 
         Write-Output ""
-        Log-ScriptEvent $LogFilePath "ConnectorVersion:$IntuneConnector"  NDES_Validation 1
+        Log-ScriptEvent $LogFilePath "ConnectorVersion: $IntuneConnector"  NDES_Validation 1
 
     }
 
@@ -1342,7 +1364,7 @@ $SigningCertificate = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\MicrosoftIntune\NDE
             if (-not ($KeyRecoveryAgentCertificatePresent)) {
     
                 Write-Warning "KeyRecoveryAgentCertificate registry key exists but has no value"
-                Log-ScriptEvent $LogFilePath "KeyRecoveryAgentCertificate missing Value"  NDES_Validation 2
+                Log-ScriptEvent $LogFilePath "KeyRecoveryAgentCertificate missing value"  NDES_Validation 2
 
             }
 
@@ -1568,6 +1590,7 @@ else {
     Write-Output "Success: " 
     Write-Output "Log files copied to $($Currentlocation)\$($date)-CertConnectorLogs-$($hostname).zip"
     Write-Output ""
+    #Show in Explorer
     Start-Process $Currentlocation
     }
 
