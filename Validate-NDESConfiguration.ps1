@@ -341,8 +341,57 @@ $MinOSVersion = "6.3"
 
 #endregion
 
-#######################################################################
-    
+###########################################################################
+#region Checking if Enhanced Configuration is Deactivated
+
+Write-Output ""
+Write-Output "......................................................."
+Write-Output ""
+Write-Host "Checking the Enhanced Configuration settings" -ForegroundColor Yellow
+Write-Output ""
+
+# Check for the current state of Enhanced Security Configuration
+$escState = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}"
+
+# If Enhanced Security Configuration is deactivated
+if ($escState.IsInstalled -eq 0) {
+    Write-Host "Enhanced Security Configuration is deactivated." -ForegroundColor Green
+} else {
+    Write-Host "Enhanced Security Configuration is activated." -ForegroundColor Red
+}
+
+
+####################################################################### 
+#region Checking if PFX Certificate Connector running as System/Domain Account
+
+Write-Output ""
+Write-Output "......................................................."
+Write-Output ""
+Write-Host "Checking the "Log on As" for PFX Certificate Connector for Intune" -ForegroundColor Yellow
+Write-Output ""
+
+
+$service = Get-Service -Name "PFXCertificateConnectorSvc"
+
+if ($service) {
+    # Get the service's process
+    $serviceProcess = Get-WmiObject Win32_Service | Where-Object { $_.Name -eq $service.Name }
+
+    # Check if the service is running as Local System or as a specific user
+    if ($serviceProcess.StartName -eq "LocalSystem") {
+        Write-Host "$($service.Name) is running as Local System" -ForegroundColor Green
+    } else {
+        Write-Host "$($service.Name) is running as $($serviceProcess.StartName)" -ForegroundColor Green
+    }
+} else {
+    Write-Host "Service not found" -ForegroundColor Red
+}
+
+#############################################################################
+
+#############################################################################
+
+
 #region Checking NDES Service Account properties in Active Directory
 $NDESServiceAccount = Get-NDESServiceAcct
 Write-Output ""
