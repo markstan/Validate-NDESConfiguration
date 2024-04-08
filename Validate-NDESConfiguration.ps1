@@ -395,6 +395,50 @@ if ($service) {
 
 #############################################################################
 
+# region Checking Connectivity to autoupdate.msappproxy.net
+
+Write-Output ""
+Write-Output "......................................................."
+Write-Output ""
+Write-Host "Checking Connectivity to autoupdate.msappproxy.net" -ForegroundColor Yellow
+Write-Output ""
+
+$uniqueURL = "autoupdate.msappproxy.net"
+$port = 443
+
+try {
+    $error.Clear()
+    $connectionTest = $false
+
+    $connection = New-Object System.Net.Sockets.TCPClient
+    $connection.ReceiveTimeout = 500
+    $connection.SendTimeout = 500 
+    $result = $connection.BeginConnect($uniqueURL, $port, $null, $null)
+    $wait = $result.AsyncWaitHandle.WaitOne(5000, $false)
+
+    if ($wait -and !$connection.Client.Connected) {
+        $connection.Close()
+        $connectionTest = $false
+    } elseif (!$wait) {
+        $connection.Close()
+        $connectionTest = $false
+    } else {
+        $connection.EndConnect($result) | Out-Null
+        $connectionTest = $connection.Connected
+    }
+    
+    if ($connectionTest) {
+        Write-Host "Connection to $uniqueURL on port $port is successful." -ForegroundColor Green
+    } else {
+        Write-Host "Connection to $uniqueURL on port $port failed." -ForegroundColor Red
+    }
+}
+catch {
+    Write-Host "Error connecting to $uniqueURL" -ForegroundColor Red
+}
+=======
+
+
 #############################################################################
 
 
