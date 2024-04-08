@@ -436,13 +436,9 @@ try {
 catch {
     Write-Host "Error connecting to $uniqueURL" -ForegroundColor Red
 }
-=======
-
-
 #############################################################################
-
-
 #region Checking NDES Service Account properties in Active Directory
+
 $NDESServiceAccount = Get-NDESServiceAcct
  
 
