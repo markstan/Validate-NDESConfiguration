@@ -388,6 +388,7 @@ if ($service) {
 }
 
 #############################################################################
+
 # region Checking Connectivity to autoupdate.msappproxy.net
 
 Write-Output ""
@@ -429,6 +430,8 @@ try {
 catch {
     Write-Host "Error connecting to $uniqueURL" -ForegroundColor Red
 }
+=======
+
 
 #############################################################################
 
