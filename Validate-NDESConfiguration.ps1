@@ -347,16 +347,16 @@ $parent = [System.IO.Path]::GetTempPath()
 New-Item -ItemType Directory -Path (Join-Path $parent $name) | Out-Null
 $TempDirPath = "$parent$name"
 $Script:LogFilePath = "$($TempDirPath)\Validate-NDESConfig.log"
+# Flag to query computer vs user properties from AD
+[bool]$SvcAcctIsComputer = $false
+$NDESServiceAccount = Get-NDESServiceAcct
 $line = "." * 60
 Write-StatusMessage "Starting logging to $logfilepath"
 
 #######################################################################
 
 #region Proceed with Variables...
-    # Flag to query computer vs user properties from AD
-    [bool]$SvcAcctIsComputer = $false
 
-    $NDESServiceAccount = Get-NDESServiceAcct
 
     if ($PSCmdlet.ParameterSetName -eq "Unattended") {
         
@@ -415,10 +415,7 @@ Test-IEEnhancedSecurityMode
 #endregion 
 #region Checking if PFX Certificate Connector running as System/Domain Account
 
-Write-Host "Checking the "Log on As" for PFX Certificate Connector for Intune" -ForegroundColor Yellow
- 
-
-
+Write-Output "Checking the `"Log on As`" for PFX Certificate Connector for Intune"  
 $service = Get-Service -Name "PFXCertificateConnectorSvc"
 
 if ($service) {
@@ -427,24 +424,20 @@ if ($service) {
 
     # Check if the service is running as Local System or as a specific user
     if ($serviceProcess.StartName -eq "LocalSystem") {
-        Write-Host "$($service.Name) is running as Local System" -ForegroundColor Green
+        Write-Output "$($service.Name) is running as Local System"  
     } else {
-        Write-Host "$($service.Name) is running as $($serviceProcess.StartName)" -ForegroundColor Green
+        Write-Output "$($service.Name) is running as $($serviceProcess.StartName)"  
     }
 } else {
-    Write-Host "Service not found" -ForegroundColor Red
+    Write-Error "PFXCertificateConnectorSvc service not found"  
 }
 
 #############################################################################
 
 # region Checking Connectivity to autoupdate.msappproxy.net
 
-Write-Output ""
-Write-Output $line
-Write-Output ""
-Write-Host "Checking Connectivity to autoupdate.msappproxy.net" -ForegroundColor Yellow
-Write-Output ""
 
+Write-StatusMessage "Checking Connectivity to autoupdate.msappproxy.net" 
 $uniqueURL = "autoupdate.msappproxy.net"
 $port = 443
 
@@ -470,13 +463,14 @@ try {
     }
     
     if ($connectionTest) {
-        Write-Host "Connection to $uniqueURL on port $port is successful." -ForegroundColor Green
+        Write-Output "Connection to $uniqueURL on port $port is successful."  
     } else {
-        Write-Host "Connection to $uniqueURL on port $port failed." -ForegroundColor Red
+        Write-Error "Connection to $uniqueURL on port $port failed."  
     }
 }
 catch {
-    Write-Host "Error connecting to $uniqueURL" -ForegroundColor Red
+    Write-Error "Error connecting to $uniqueURL. Please test that the service account has internet access."
+    New-LogEntry "Unable to connect to $uniqueURL."
 }
 #############################################################################
 #region Checking NDES Service Account properties in Active Directory
