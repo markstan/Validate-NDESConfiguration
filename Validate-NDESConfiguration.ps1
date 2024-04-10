@@ -1331,6 +1331,68 @@ $Statuscode = try {(Invoke-WebRequest -Uri https://$hostname/certsrv/mscep/mscep
 #endregion
 
 #################################################################
+#region Review IIS log and list recently 9 SCEP Request
+
+function checkIISlog {
+    
+    # Specify the path to the IIS log files
+    $logPath = "C:\inetpub\logs\LogFiles\W3SVC1"
+    $logObjects = @()
+
+    # Specify the pattern to search for in the log files
+    $logPattern = "*certsrv/mscep/mscep.dll*"
+
+    # Get the latest log file
+    $logFiles = Get-ChildItem -Path $logPath | Sort-Object LastWriteTime -Descending | Select-Object -First 2
+
+    if ($null -ne $logFiles) {
+        
+        foreach ($logFile in $logFiles) {
+        # Read the log file
+        $logContent = Get-Content -Path $logFile.FullName| Where-Object { $_ -like $logPattern }
+
+        foreach ($entry in $logContent) {
+            
+            # Split the log entry into fields
+            $fields = $entry -split "\s+"
+            
+            # Create an object for the log entry
+            $logObject = [PSCustomObject]@{
+            # Date = get-date $fields[0]
+            # Time = $fields[1]
+                Date = get-date "$($fields[0]) $($fields[1])"
+                SIP = $fields[2]
+                Method = $fields[3]
+                URIStem = $fields[4]
+                URIQuery = $fields[5]
+                SPort = $fields[6]
+                Username = $fields[7]
+                CIP = $fields[8]
+                UserAgent = $fields[9]
+                Referer = $fields[10]
+                StatusCode = $fields[11]
+                SubStatusCode = $fields[12]
+                Win32StatusCode = $fields[13]
+                TimeTaken = $fields[14]
+            }
+            
+            # Add the log object to the array
+            $logObjects += $logObject
+        }
+        
+        # Output the log objects
+        $RecentrequestinIIS = $logObjects | Select-Object -First 9
+
+        Write-output $RecentrequestinIIS
+    }
+    } else {
+        Write-Host "No log files found in the specified path."
+    }
+}
+
+#endregion
+
+#################################################################
 
 #region Checking Servers last boot time
 
