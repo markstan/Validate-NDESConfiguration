@@ -365,7 +365,7 @@ function Test-IEEnhancedSecurityMode {
     }
 }
 
-function CheckPFXCertificateConnector {
+function Test-PFXCertificateConnector {
     Write-Output "Checking the `"Log on As`" for PFX Certificate Connector for Intune"  
     $service = Get-Service -Name "PFXCertificateConnectorSvc"
 
@@ -391,7 +391,7 @@ function Test-Connectivity {
     # function code here
 }
 
-function ProceedWithVariables {
+function Test-Variables {
     if ($PSCmdlet.ParameterSetName -eq "Unattended") {
         $MscepRaEku = '1.3.6.1.4.1.311.20.2.1' # CEP Encryption
         # Get cert authority from the Certificate Request Agent cert.
@@ -416,7 +416,7 @@ function ProceedWithVariables {
     }
 }
 
-function InitializeLogFile {
+function Initialize-LogFile {
     Write-Output ""
     Write-Output $line
     New-LogEntry  "Initializing log file $($TempDirPath)\Validate-NDESConfig.log"  -Severity 1
@@ -426,7 +426,7 @@ function InitializeLogFile {
     New-LogEntry  "SCEPCertificateTemplate=$($SCEPUserCertTemplate)" -Severity 1
 }
 
-function InstallRSATToolsAndCheck {
+function Test-InstallRSATTools {
     Test-IsNDESInstalled
 
     if ( -not ( Test-IsRSATADInstalled) ){
@@ -466,7 +466,6 @@ function Test-WindowsFeaturesInstalled {
         }
     }
 } 
- 
 
 function Test-IISApplicationPoolHealth {
     Write-StatusMessage "Checking IIS Application Pool health..."  
@@ -547,9 +546,8 @@ function Test-IISApplicationPoolHealth {
         }
     
 }
-
  
-function CheckNDESInstallParameters {
+function Test-NDESInstallParameters {
     param (
         [Parameter(Mandatory=$true)]
         [string]$LogName
@@ -586,7 +584,7 @@ function CheckNDESInstallParameters {
     $ErrorActionPreference = "Continue"
 }
 
-function CheckRegistrySettings {
+function Test-HTTPParamsRegKeys {
     param (
         [Parameter(Mandatory=$true)]
         [string]$LogName
@@ -629,7 +627,7 @@ function CheckRegistrySettings {
     }
 }
  
-function CheckSPN {
+function Test-SPN {
     param (
         [Parameter(Mandatory=$true)]
         [string]$ADAccount,
@@ -658,11 +656,8 @@ function CheckSPN {
         New-LogEntry "Missing or Incorrect SPN set for the NDES Service Account" -Severity 3 
     }
 }
-
-CheckSPN -ADAccount "NDES_Service_Account" -LogName "Microsoft-Windows-CertificateServices-Deployment/Operational"
-
  
-function CheckIntermediateCerts {
+function Test-IntermediateCerts {
     param (
         [Parameter(Mandatory=$true)]
         [string]$LogName
@@ -685,10 +680,9 @@ function CheckIntermediateCerts {
         Write-Output "Trusted Root store does not contain any Intermediate certificates."
         New-LogEntry "Trusted Root store does not contain any Intermediate certificates." -Severity 1
     }
-}
- 
+} 
 
-function CheckCertificates {
+function Test-Certificates {
     param (
         [Parameter(Mandatory=$true)]
         [string]$LogName
@@ -747,7 +741,8 @@ function CheckCertificates {
     # Set ErrorActionPreference back to Continue
     $ErrorActionPreference = "Continue"
 }
-function CheckRegistry {
+
+function Test-TemplateNameRegKey {
     param (
         [string]$SCEPUserCertTemplate
     )
@@ -841,7 +836,8 @@ function CheckRegistry {
 
     $ErrorActionPreference = "Continue"
 }
-function CheckServerCertificate {
+
+function Test-ServerCertificate {
     Write-StatusMessage "Checking IIS SSL certificate is valid for use..."
     New-LogEntry "Checking IIS SSL certificate is valid for use" -Severity 1
 
@@ -925,7 +921,7 @@ function CheckServerCertificate {
     }
 }
 
-function CheckClientCertificate {
+function Test-ClientCertificate {
     Write-Output ""
     Write-Output $line
     Write-Output ""
@@ -984,7 +980,7 @@ function CheckClientCertificate {
     }
 }
  
-function CheckInternalNDESURL {
+function Test-InternalNdesUrl {
     Write-Output ""
     Write-Output $line
     $hostname = ([System.Net.Dns]::GetHostByName(($env:computerName))).hostname
@@ -1032,7 +1028,7 @@ function CheckInternalNDESURL {
 }
  
 
-function CheckLastBootTime {
+function Test-LastBootTime {
     Write-Output ""
     Write-Output $line
     Write-Output ""
@@ -1049,7 +1045,8 @@ Please ensure a reboot has taken place _after_ all registry changes and installi
 
     New-LogEntry "LastBootTime: $LastBoot" -Severity 1
 }
-function CheckIntuneConnectorInstallation {
+
+function Test-IntuneConnectorInstall {
     Write-StatusMessage "Checking if Intune Connector is installed..."
     New-LogEntry "Checking Intune Connector is installed" -Severity 1
 
@@ -1066,7 +1063,8 @@ function CheckIntuneConnectorInstallation {
         New-LogEntry "ConnectorNotInstalled" -Severity 3
     }
 }
-function CheckIntuneConnectorRegistryKeys {
+
+function Test-IntuneConnectorRegKeys {
     Write-Output ""
     Write-Output $line
     Write-Output ""
@@ -1195,153 +1193,7 @@ function Get-EventLogData {
 
     $ErrorActionPreference = "Continue"
 }
- 
-function Compress-LogFiles {
-    param (
-        [string]$LogFilePath,
-        [string]$TempDirPath,
-        [string]$hostname
-    )
 
-    Write-Output ""
-    Write-Output $line
-    Write-Output ""
-    Write-Output "Log Files..." 
-    Write-Output ""
-    
-    if ($PSCmdlet.ParameterSetName -eq "Unattended") {
-        Write-Output "Automatically gathering files."
-        $LogFileCollectionConfirmation = "y"
-    }
-    else {
-        Write-Output "Do you want to gather troubleshooting files? This includes IIS, NDES Connector, NDES Plugin, CRP, and MSCEP log files, in addition to the SCEP template configuration.  [Y]es, [N]o:"
-        $LogFileCollectionConfirmation = Read-Host
-    }
-    
-    if ($LogFileCollectionConfirmation -eq "y") {
-        $IISLogPath = (Get-WebConfigurationProperty "/system.applicationHost/sites/siteDefaults" -name logfile.directory).Value + "\W3SVC1" -replace "%SystemDrive%",$env:SystemDrive
-        $IISLogs = Get-ChildItem $IISLogPath | Sort-Object -Descending -Property LastWriteTime | Select-Object -First 3
-        $NDESConnectorLogs = Get-ChildItem "$env:SystemRoot\System32\Winevt\Logs\Microsoft-Intune-CertificateConnectors*"
-
-        foreach ($IISLog in $IISLogs) {
-            Copy-Item -Path $IISLog.FullName -Destination $TempDirPath
-        }
-
-        foreach ($NDESConnectorLog in $NDESConnectorLogs) {
-            Copy-Item -Path $NDESConnectorLog.FullName -Destination $TempDirPath
-        }
-
-        foreach ($NDESPluginLog in $NDESPluginLogs) {
-            Copy-Item -Path $NDESPluginLog.FullName -Destination $TempDirPath
-        }
-
-        foreach ($MSCEPLog in $MSCEPLogs) {
-            Copy-Item -Path $MSCEPLog.FullName -Destination $TempDirPath
-        }
-
-        foreach ($CRPLog in $CRPLogs) {
-            Copy-Item -Path $CRPLogs.FullName -Destination $TempDirPath
-        }
-
-        $SCEPUserCertTemplateOutputFilePath = "$($TempDirPath)\SCEPUserCertTemplate.txt"
-        certutil -v -template $SCEPUserCertTemplate > $SCEPUserCertTemplateOutputFilePath
-
-        New-LogEntry "Collecting server logs" -Severity 1
-
-        Add-Type -assembly "system.io.compression.filesystem"
-        $Currentlocation = $env:temp
-        $date = Get-Date -Format ddMMyyhhmmss
-        Copy-Item $LogFilePath .
-        [io.compression.zipfile]::CreateFromDirectory($TempDirPath, "$($Currentlocation)\$($date)-CertConnectorLogs-$($hostname).zip")
-
-        Write-Output ""
-        Write-Output "Success: " 
-        Write-Output "Log files copied to $($Currentlocation)\$($date)-CertConnectorLogs-$($hostname).zip"
-        Write-Output ""
-        # Show in Explorer
-        Start-Process $Currentlocation
-    }
-    else {
-        New-LogEntry "Do not collect logs" -Severity 1
-        $Script:WriteLogOutputPath = $true
-    }
-}
-
-#  Script requirements
-
-#Requires -version 3.0
-#Requires -RunAsAdministrator 
-##   #Requires -module ActiveDirectory
-
-# Script Variables
-$parent = [System.IO.Path]::GetTempPath()
-[string] $name = [System.Guid]::NewGuid()
-New-Item -ItemType Directory -Path (Join-Path $parent $name) | Out-Null
-$TempDirPath = "$parent$name"
-$Script:LogFilePath = "$($TempDirPath)\Validate-NDESConfig.log"
-
-# Flag to query computer vs user properties from AD
-[bool]$SvcAcctIsComputer = $false
-$NDESServiceAccount = Get-NDESServiceAcct
-$line = "." * 60
-
-Write-StatusMessage "Starting logging to $logfilepath"
- 
-
-Confirm-Variables -NDESServiceAccount $NDESServiceAccount -IssuingCAServerFQDN $IssuingCAServerFQDN -SCEPUserCertTemplate $SCEPUserCertTemplate
-
-if ( -not ( Test-IsRSATADInstalled) ){
-    Install-RSATAD
-}
-
-Test-IsNDESInstalled
-Test-IsAADModuleInstalled
-Test-IsIISInstalled
-Test-OSVersion
-Test-IEEnhancedSecurityMode
-Test-NDESServiceAccountProperties -NDESServiceAccount $NDESServiceAccount
-Get-EventLogData
-CheckPFXCertificateConnector
-Test-Connectivity
-ProceedWithVariables
-InitializeLogFile
-InstallRSATToolsAndCheck
-Test-IISApplicationPoolHealth
-CheckNDESInstallParameters -LogName "Microsoft-Windows-CertificateServices-Deployment/Operational"
-CheckRegistrySettings -LogName "Microsoft-Windows-CertificateServices-Deployment/Operational"
-CheckIntermediateCerts -LogName "Microsoft-Windows-CertificateServices-Deployment/Operational"
-CheckRegistry -SCEPUserCertTemplate "YourSCEPCertificateTemplateName"
-CheckCertificates -LogName "Microsoft-Windows-CertificateServices-Deployment/Operational"
-CheckServerCertificate
-CheckInternalNDESURL
-CheckLastBootTime
-CheckIntuneConnectorInstallation
-CheckIntuneConnectorRegistryKeys
-CheckClientCertificate
-Test-WindowsFeaturesInstalled 
-Test-NDESServiceAccountLocalPermissions -NDESServiceAccount $NDESServiceAccount
-CheckEventLogs
-Compress-LogFiles
-
-#endregion 
- 
-Write-Output "Checking the `"Log on As`" for PFX Certificate Connector for Intune"  
-$service = Get-Service -Name "PFXCertificateConnectorSvc"
-
-if ($service) {
-    # Get the service's process
-    $serviceProcess = Get-WmiObject Win32_Service | Where-Object { $_.Name -eq $service.Name }
-
-    # Check if the service is running as Local System or as a specific user
-    if ($serviceProcess.StartName -eq "LocalSystem") {
-        Write-Output "$($service.Name) is running as Local System"  
-    } else {
-        Write-Output "$($service.Name) is running as $($serviceProcess.StartName)"  
-    }
-} else {
-    Write-Error "PFXCertificateConnectorSvc service not found"  
-}
- 
 function Test-Connectivity {
     param(
         [string]$uniqueURL = "autoupdate.msappproxy.net",
@@ -1411,11 +1263,8 @@ function Test-NDESServiceAccountProperties {
     $msg = $ADAccountProps | Format-List SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut
     $msg
     New-LogEntry "$msg" -Severity 1
-}
+} 
 
-
-
-#######################################################################
 function Test-NDESServiceAccountLocalPermissions {
     Write-StatusMessage "Checking NDES Service Account local permissions..." 
     New-LogEntry "Checking NDES Service Account local permissions" -Severity 1 
@@ -1605,34 +1454,17 @@ function Test-NDESServiceAccountLocalPermissions {
                 New-LogEntry  "NDES Service account is not a member of the local Administrators group"  -Severity 1    
             }
         }
+           else {
+
+        Write-Warning "No local Administrators group exists, likely due to this being a Domain Controller or renaming the group. It is not recommended to run NDES on a Domain Controller."
+        New-LogEntry  "No local Administrators group exists, likely due to this being a Domain Controller or renaming the group. It is not recommended to run NDES on a Domain Controller." -Severity 2
+    
+        }
+
     }
-}
+} 
  
- 
-Write-StatusMessage "Checking NDES Service Account local permissions..." 
-New-LogEntry  "Checking NDES Service Account local permissions" -Severity 1 
-if ($SvcAcctIsComputer) { 
-    Write-StatusMessage "Skipping NDES Service Account local permissions since local system is used as the service account..." 
-    New-LogEntry  "Skipping NDES Service Account local permissions since local system is used as the service account" -Severity 1 
-}
-else {
-   if ((net localgroup) -match "Administrators"){
-
-    $LocalAdminsMember = ((net localgroup Administrators))
-
-        if ($LocalAdminsMember -like "*$NDESServiceAccount*"){
-        
-            Write-Warning "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use the IIS_IUSERS local group instead."
-            New-LogEntry  "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use IIS_IUSERS instead."  -Severity 2
-
-        }
-
-        else {
-
-            Write-StatusMessage "Success:`r`nNDES Service account is not a member of the local Administrators group"
-            New-LogEntry  "NDES Service account is not a member of the local Administrators group"  -Severity 1    
-        }
-
+Function Test-IIS_IUSR_Membership {
     Write-StatusMessage "Checking NDES Service account is a member of the IIS_IUSR group..." 
     if ((net localgroup) -match "IIS_IUSRS"){
 
@@ -1643,7 +1475,7 @@ else {
             Write-StatusMessage "Success:`r`nNDES service account is a member of the local IIS_IUSR group"
             New-LogEntry  "NDES service account is a member of the local IIS_IUSR group" -Severity 1    
         }
-    
+
         else {
 
             Write-Output "Error: NDES Service Account is not a member of the local IIS_IUSR group" 
@@ -1658,7 +1490,7 @@ else {
             $ADAccount = $NDESServiceAccount.split("\")[1]
             # we should only be checking user accounts. If local system is the service account, we can skip this event
             $ADAccountProps = (Get-ADUser $ADAccount -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut)
-         
+            
             $NDESSVCAccountSID = $ADAccountProps.SID.Value 
             $LocalSecPolResults = $LocalSecPol | Select-String $NDESSVCAccountSID
 
@@ -1685,7 +1517,7 @@ else {
                     New-LogEntry  "NDES Service Account has _NOT_ been assigned the Logon Locally, Logon as a Service or Logon as a batch job rights _explicitly_." -Severity 3
             
                 }
-    
+
         }
 
     }
@@ -1696,26 +1528,164 @@ else {
         Write-Output 'Please review "Step 3.1 - Configure prerequisites on the NDES server".' 
         Write-Output "https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
         New-LogEntry  "No IIS_IUSRS group exists. Ensure IIS is installed." -Severity 3
-    
-    }
 
     }
 
-   else {
+}
+ 
+Function Test-PFXCertificateConnectorService {
+    Write-Output "Checking the `"Log on As`" for PFX Certificate Connector for Intune"  
+    $service = Get-Service -Name "PFXCertificateConnectorSvc"
 
-        Write-Warning "No local Administrators group exists, likely due to this being a Domain Controller or renaming the group. It is not recommended to run NDES on a Domain Controller."
-        New-LogEntry  "No local Administrators group exists, likely due to this being a Domain Controller or renaming the group. It is not recommended to run NDES on a Domain Controller." -Severity 2
-    
+    if ($service) {
+        # Get the service's process
+        $serviceProcess = Get-WmiObject Win32_Service | Where-Object { $_.Name -eq $service.Name }
+
+        # Check if the service is running as Local System or as a specific user
+        if ($serviceProcess.StartName -eq "LocalSystem") {
+            Write-Output "$($service.Name) is running as Local System"  
+        }
+        else {
+            Write-Output "$($service.Name) is running as $($serviceProcess.StartName)"  
+        }
+    } 
+    else {
+        Write-Error "PFXCertificateConnectorSvc service not found"  
     }
 
 }
 
+function Compress-LogFiles {
+    param (
+        [string]$LogFilePath,
+        [string]$TempDirPath,
+        [string]$hostname
+    )
+
+    Write-Output ""
+    Write-Output $line
+    Write-Output ""
+    Write-Output "Log Files..." 
+    Write-Output ""
+    
+    if ($PSCmdlet.ParameterSetName -eq "Unattended") {
+        Write-Output "Automatically gathering files."
+        $LogFileCollectionConfirmation = "y"
+    }
+    else {
+        Write-Output "Do you want to gather troubleshooting files? This includes IIS, NDES Connector, NDES Plugin, CRP, and MSCEP log files, in addition to the SCEP template configuration.  [Y]es, [N]o:"
+        $LogFileCollectionConfirmation = Read-Host
+    }
+    
+    if ($LogFileCollectionConfirmation -eq "y") {
+        $IISLogPath = (Get-WebConfigurationProperty "/system.applicationHost/sites/siteDefaults" -name logfile.directory).Value + "\W3SVC1" -replace "%SystemDrive%",$env:SystemDrive
+        $IISLogs = Get-ChildItem $IISLogPath | Sort-Object -Descending -Property LastWriteTime | Select-Object -First 3
+        $NDESConnectorLogs = Get-ChildItem "$env:SystemRoot\System32\Winevt\Logs\Microsoft-Intune-CertificateConnectors*"
+
+        foreach ($IISLog in $IISLogs) {
+            Copy-Item -Path $IISLog.FullName -Destination $TempDirPath
+        }
+
+        foreach ($NDESConnectorLog in $NDESConnectorLogs) {
+            Copy-Item -Path $NDESConnectorLog.FullName -Destination $TempDirPath
+        }
+
+        foreach ($NDESPluginLog in $NDESPluginLogs) {
+            Copy-Item -Path $NDESPluginLog.FullName -Destination $TempDirPath
+        }
+
+        foreach ($MSCEPLog in $MSCEPLogs) {
+            Copy-Item -Path $MSCEPLog.FullName -Destination $TempDirPath
+        }
+
+        foreach ($CRPLog in $CRPLogs) {
+            Copy-Item -Path $CRPLogs.FullName -Destination $TempDirPath
+        }
+
+        $SCEPUserCertTemplateOutputFilePath = "$($TempDirPath)\SCEPUserCertTemplate.txt"
+        certutil -v -template $SCEPUserCertTemplate > $SCEPUserCertTemplateOutputFilePath
+
+        New-LogEntry "Collecting server logs" -Severity 1
+
+        Add-Type -assembly "system.io.compression.filesystem"
+        $Currentlocation = $env:temp
+        $date = Get-Date -Format ddMMyyhhmmss
+        Copy-Item $LogFilePath .
+        [io.compression.zipfile]::CreateFromDirectory($TempDirPath, "$($Currentlocation)\$($date)-CertConnectorLogs-$($hostname).zip")
+
+        Write-Output ""
+        Write-Output "Success: " 
+        Write-Output "Log files copied to $($Currentlocation)\$($date)-CertConnectorLogs-$($hostname).zip"
+        Write-Output ""
+        # Show in Explorer
+        Start-Process $Currentlocation
+    }
+    else {
+        New-LogEntry "Do not collect logs" -Severity 1
+        $Script:WriteLogOutputPath = $true
+    }
+}
+
+#  Script requirements
+
+#Requires -version 3.0
+#Requires -RunAsAdministrator 
+##   #Requires -module ActiveDirectory
+
+# Script Variables
+$parent = [System.IO.Path]::GetTempPath()
+[string] $name = [System.Guid]::NewGuid()
+New-Item -ItemType Directory -Path (Join-Path $parent $name) | Out-Null
+$TempDirPath = "$parent$name"
+$Script:LogFilePath = "$($TempDirPath)\Validate-NDESConfig.log"
+
+# Flag to query computer vs user properties from AD
+[bool]$SvcAcctIsComputer = $false
+$NDESServiceAccount = Get-NDESServiceAcct
+$line = "." * 60
+
+Write-StatusMessage "Starting logging to $logfilepath"
  
+Confirm-Variables -NDESServiceAccount $NDESServiceAccount -IssuingCAServerFQDN $IssuingCAServerFQDN -SCEPUserCertTemplate $SCEPUserCertTemplate
+
+if ( -not ( Test-IsRSATADInstalled) ){
+    Install-RSATAD
+}
+
+Initialize-LogFile
+Test-Variables
+Test-IsNDESInstalled
+Test-IsAADModuleInstalled
+Test-IsIISInstalled
+Test-OSVersion
+Test-IEEnhancedSecurityMode
+Test-NDESServiceAccountProperties -NDESServiceAccount $NDESServiceAccount
+Get-EventLogData
+Test-PFXCertificateConnector
+Test-Connectivity
+Test-InstallRSATTools
+Test-IISApplicationPoolHealth
+Test-NDESInstallParameters -LogName "Microsoft-Windows-CertificateServices-Deployment/Operational"
+Test-HTTPParamsRegKeys -LogName "Microsoft-Windows-CertificateServices-Deployment/Operational"
+Test-IntermediateCerts -LogName "Microsoft-Windows-CertificateServices-Deployment/Operational"
+Test-TemplateNameRegKey -SCEPUserCertTemplate "YourSCEPCertificateTemplateName"
+Test-Certificates -LogName "Microsoft-Windows-CertificateServices-Deployment/Operational"
+Test-ServerCertificate
+Test-InternalNdesUrl
+Test-LastBootTime
+Test-IntuneConnectorInstall
+Test-IntuneConnectorRegKeys
+Test-ClientCertificate
+Test-WindowsFeaturesInstalled 
+Test-NDESServiceAccountLocalPermissions -NDESServiceAccount $NDESServiceAccount
+Test-SPN -ADAccount "NDES_Service_Account" -LogName "Microsoft-Windows-CertificateServices-Deployment/Operational"
+Test-PFXCertificateConnectorSvc 
+Compress-LogFiles
+
+#endregion 
 
 
-#################################################################
 
-#################################################################
 
 #region Ending script
  
