@@ -200,7 +200,7 @@ function Get-NDESServiceAcct {
 
         if (Test-Path $CARegPath ) {
             if ( (Get-ItemProperty $CARegPath).UseSystemAccount -eq 1) {
-                $NDESServiceAccount = (Get-WMIObject).Domain + "`\" + $env:computerName  
+                $NDESServiceAccount = (Get-WMIObject Win32_ComputerSystem).Domain + "`\" + $env:computerName  
                 Set-ServiceAccountisLocalSystem $true
 
             }
