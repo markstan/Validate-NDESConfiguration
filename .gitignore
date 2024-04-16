@@ -1,3 +1,4 @@
 *.log
 !Validate*.ps1
+*.evtx
 
