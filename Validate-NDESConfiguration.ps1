@@ -96,42 +96,69 @@ Param(
 ) 
 
 function New-LogEntry {
-
-[CmdletBinding()]
-
-Param(
-      [parameter(Mandatory=$false)]
-      [String]$LogFilePath = "$temp\Validate-NDESLog.log",
-
-      [parameter(Mandatory=$true, ValueFromPipeline = $true, Position = 0)]
-      [String]$Value,
-
-      [parameter(Mandatory=$false)]
-      [String]$Component = "NDES_Validation",
-
-      [parameter(Mandatory=$true, Position = 1)]
-      [ValidateRange(1,3)]
-      [Single]$Severity
-      )
-
-$DateTime = New-Object -ComObject WbemScripting.SWbemDateTime 
-$DateTime.SetVarDate($(Get-Date))
-$UtcValue = $DateTime.Value
-$UtcOffset = $UtcValue.Substring(21, $UtcValue.Length - 21)
-
-$LogLine =  "<![LOG[$Value]LOG]!>" +`
-            "<time=`"$(Get-Date -Format HH:mm:ss.fff)$($UtcOffset)`" " +`
-            "date=`"$(Get-Date -Format M-d-yyyy)`" " +`
-            "component=`"$Component`" " +`
-            "context=`"$([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)`" " +`
-            "type=`"$Severity`" " +`
-            "thread=`"$([Threading.Thread]::CurrentThread.ManagedThreadId)`" " +`
-            "file=`"`">"
-
-Add-Content -Path $Script:LogFilePath -Value $LogLine
-
-}
- 
+        <#
+      .SYNOPSIS
+       Script-wide logging function
+      .DESCRIPTION
+       Writes debug logging statements to script log file
+      .EXAMPLE
+          New-LogEntry "Entering function"
+          Write log entry with information level
+      
+      .EXAMPLE
+          New-LogEntry -Level Error -WriteStdOut "Error"
+          Write error to log and also show in PowerShell output
+       
+      .NOTES
+      NAME: New-LogEntry 
+      
+      Set $global:LogName at the beginning of the script
+      #>
+      
+        [CmdletBinding()]
+        param(
+          [parameter(Mandatory=$true, ValueFromPipeline = $true, Position = 0)]
+          [string]$Message,
+      
+          [Parameter(Position = 1)] 
+          # 1 = Information
+          # 2 = Warning
+          # 3 = Error
+          # 4 = Verbose
+          [ValidateSet(1,2,3,4)]
+          [string]$Severity = '1',
+            
+          [Parameter()]
+          [switch]$WriteStdOut,
+      
+          [Parameter()]
+          # create log in format 
+          [string]$LogName = $Script:LogFilePath
+       
+        )
+      
+        BEGIN {
+          if ( ($null -eq $LogName) -or ($LogName -eq "")) { Write-Error "Please set variable `$global`:LogName." }
+        }
+        PROCESS {
+          # only log verbose if flag is set
+          if ( ($Level -eq "4") -and ( -not ($debugMode) ) ) {
+            # don't log events unless flag is set
+          } else {
+               
+            [pscustomobject]@{
+              Time    = (Get-Date -f u)   
+              Line    = "`[$($MyInvocation.ScriptLineNumber)`]"          
+              Level   = $Level
+              Message = $Message
+                  
+            } |  Export-Csv -Path $LogName -Append -Force -NoTypeInformation -Encoding Unicode
+      
+            if (  $WriteStdOut -or ( ($Level -eq "Verbose") -and $debugMode)) { Write-Output $Message }
+          }
+        }
+        END {}
+      }
 
 function Write-StatusMessage {  
         param($message)
@@ -1595,6 +1622,17 @@ function Compress-LogFiles {
     }
 }
 
+function Format-Log {
+    <# Remove quotes from CSV #>
+    param($logname = $Script:LogFilePath)
+
+    $Contents = Get-Content $logname
+    $FormattedContent = ($Contents -replace '("$|,"|",{1,2}")', '  ') -replace '^"', ''
+
+ 
+    $FormattedContent | Out-File $logname -Encoding utf8 -Force
+}
+
 #  Script requirements
 
 #Requires -version 3.0
@@ -1649,6 +1687,7 @@ Test-WindowsFeaturesInstalled
 Test-NDESServiceAccountLocalPermissions -NDESServiceAccount $NDESServiceAccount
 Test-SPN -ADAccount "NDES_Service_Account"  
 Test-PFXCertificateConnectorService
+Format-Log
 Compress-LogFiles
 
 #endregion 
