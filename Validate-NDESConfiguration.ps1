@@ -291,7 +291,7 @@ function Install-RSATAD {
     
 function Test-IsAADModuleInstalled {
 
-    if (Get-Module ActiveDirectory) {
+    if (Get-Module ActiveDirectory -ListAvailable) {
         New-LogEntry "ActiveDirectory module is installed." 1
     }
     else {
