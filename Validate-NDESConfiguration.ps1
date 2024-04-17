@@ -540,16 +540,13 @@ function Test-IISApplicationPoolHealth {
 }
  
 function Test-NDESInstallParameters {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$LogName
-    )
+    param ()
 
     $ErrorActionPreference = "SilentlyContinue"
  
     Write-StatusMessage "Checking NDES Install Parameters..."  
 
-    $InstallParams = @(Get-WinEvent -LogName $LogName | Where-Object {$_.id -eq "105"} |
+    $InstallParams = @(Get-WinEvent -LogName "Microsoft-Windows-CertificateServices-Deployment/Operational" | Where-Object {$_.id -eq "105"} |
         Where-Object {$_.message -match "Install-AdcsNetworkDeviceEnrollmentService"} |
         Sort-Object -Property TimeCreated -Descending | Select-Object -First 1)
 
@@ -577,13 +574,9 @@ function Test-NDESInstallParameters {
 }
 
 function Test-HTTPParamsRegKeys {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$LogName
-    )
+    param ()
 
     Write-StatusMessage "Checking registry HKLM:SYSTEM\CurrentControlSet\Services\HTTP\Parameters has been set to allow long URLs..."
-    Write-Output ""
     New-LogEntry "Checking registry (HKLM:SYSTEM\CurrentControlSet\Services\HTTP\Parameters) has been set to allow long URLs" -Severity 1
 
     if (-not ($IISNotInstalled -eq $true)) {
@@ -622,9 +615,7 @@ function Test-HTTPParamsRegKeys {
 function Test-SPN {
     param (
         [Parameter(Mandatory=$true)]
-        [string]$ADAccount,
-        [Parameter(Mandatory=$true)]
-        [string]$LogName
+        [string]$ADAccount
     )
 
     Write-StatusMessage "Checking SPN has been set..." 
@@ -650,10 +641,7 @@ function Test-SPN {
 }
  
 function Test-IntermediateCerts {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$LogName
-    )
+    param ()
 
     Write-StatusMessage "Checking there are no intermediate certs are in the Trusted Root store..."  
     New-LogEntry "Checking there are no intermediate certs are in the Trusted Root store" -Severity 1
@@ -675,10 +663,7 @@ function Test-IntermediateCerts {
 } 
 
 function Test-Certificates {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$LogName
-    )
+    param ()
 
     # Set ErrorActionPreference to SilentlyContinue
     $ErrorActionPreference = "Silentlycontinue"
