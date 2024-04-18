@@ -518,12 +518,9 @@ function Get-TCAInfo {
 	    New-LogEntry "TCAInfo"
         } else {
             Write-Output "cannot fetch the published template details."
-            New-LogEntry "cannot fetch the published template details." -Severity 3
-	    New-LogEntry "cannot fetch the published template details." 
         }
     } catch {
         Write-Error "Template Details cannot be fetched_"
-        New-LogEntry "cannot fetch the published template details." -Severity 3
     }
 }
 
