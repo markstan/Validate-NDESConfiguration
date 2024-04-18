@@ -505,6 +505,28 @@ function Test-PFXCertificateConnector {
     }
 }
 
+function Get-TCAInfo {
+    # Fetching the Template Info that is published in CA
+    Write-StatusMessage "Checking the published templates"
+    
+
+    try {
+        # Execute certutil -TCAInfo command
+        $output = certutil.exe -TCAInfo
+        if ($output) {
+            Write-Output $output
+	    New-LogEntry "TCAInfo"
+        } else {
+            Write-Output "cannot fetch the published template details."
+            New-LogEntry "cannot fetch the published template details." -Severity 3
+	    New-LogEntry "cannot fetch the published template details." 
+        }
+    } catch {
+        Write-Error "Template Details cannot be fetched_"
+        New-LogEntry "cannot fetch the published template details." -Severity 3
+    }
+}
+
 function Test-Connectivity {
     param(
         # parameters here
@@ -1771,6 +1793,7 @@ Test-IEEnhancedSecurityMode
 Test-NDESServiceAccountProperties -NDESServiceAccount $NDESServiceAccount
 Get-EventLogData
 Test-PFXCertificateConnector
+Get-TCAInfo
 Test-Connectivity
 Test-InstallRSATTools
 Test-IISApplicationPoolHealth
