@@ -1129,10 +1129,11 @@ function Test-InternalNdesUrl {
     } else {
         Write-Output "Error: Unexpected Error code! This usually signifies an error with the Intune Connector registering itself or not being installed" 
         Write-Output "Expected value is a 403. We received a $($Statuscode). This could be down to a missing reboot post policy module install. Verify last boot time and module install time further down the validation."
-        New-LogEntry "Unexpected Error code. Expected: 403 | Received: $Statuscode" -Severity 3
+        New-LogEntry  "Unexpected Error code. Expected: 403 | Received: $Statuscode"  -Severity 3
     }
-}
- 
+   }
+        
+#endregion
 
 function Test-LastBootTime {
     Write-Output ""
@@ -1167,6 +1168,61 @@ function Test-IntuneConnectorInstall {
         Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
         Write-Output ""
         New-LogEntry "ConnectorNotInstalled" -Severity 3
+    }
+}
+
+function Test-IIS_Log {
+
+    # Specify the path to the IIS log files
+    $logPath = "C:\inetpub\logs\LogFiles\W3SVC1"
+    $logObjects = @()
+
+    # Specify the pattern to search for in the log files
+    $logPattern = "*certsrv/mscep/mscep.dll*"
+
+    # Get the latest log file
+    $logFiles = Get-ChildItem -Path $logPath | Sort-Object LastWriteTime -Descending | Select-Object -First 2
+
+    if ($null -ne $logFiles) {
+        
+        foreach ($logFile in $logFiles) {
+        # Read the log file
+        $logContent = Get-Content -Path $logFile.FullName| Where-Object { $_ -like $logPattern }
+
+        foreach ($entry in $logContent) {
+    
+            # Split the log entry into fields
+            $fields = $entry -split "\s+"
+            
+            # Create an object for the log entry
+            $logObject = [PSCustomObject]@{
+            # Date = get-date $fields[0]
+            # Time = $fields[1]
+                Date = get-date "$($fields[0]) $($fields[1])"
+                SIP = $fields[2]
+                Method = $fields[3]
+                URIStem = $fields[4]
+                URIQuery = $fields[5]
+                SPort = $fields[6]
+                Username = $fields[7]
+                CIP = $fields[8]
+                UserAgent = $fields[9]
+                Referer = $fields[10]
+                StatusCode = $fields[11]
+                SubStatusCode = $fields[12]
+                Win32StatusCode = $fields[13]
+                TimeTaken = $fields[14]
+            }
+            # Add the log object to the array
+            $logObjects += $logObject
+        }
+        # Output the log objects
+        $RecentrequestinIIS = $logObjects | Select-Object -First 9
+
+        Write-Output $RecentrequestinIIS
+    }
+    } else {
+        Write-Output "No log files found in the specified path."
     }
 }
 
@@ -1679,13 +1735,24 @@ function Compress-LogFiles {
         $IISLogPath = (Get-WebConfigurationProperty "/system.applicationHost/sites/siteDefaults" -name logfile.directory).Value + "\W3SVC1" -replace "%SystemDrive%",$env:SystemDrive
         $IISLogs = Get-ChildItem $IISLogPath | Sort-Object -Descending -Property LastWriteTime | Select-Object -First 3
         $NDESConnectorLogs = Get-ChildItem "$env:SystemRoot\System32\Winevt\Logs\Microsoft-Intune-CertificateConnectors*"
+        $NDESConnectorUpdateAgentLogs = Get-ChildItem "$env:SystemRoot\System32\Winevt\Logs\Microsoft-AzureADConnect-AgentUpdater*"
 
+        $ApplicationEventLogFile = Get-WinEvent -ListLog "Application" | Select-Object -ExpandProperty LogFilePath
+        $ApplicationLogFilePath = [System.Environment]::ExpandEnvironmentVariables( $ApplicationEventLogFile)
+
+        $SystemEventLogFile = Get-WinEvent -ListLog "System" | Select-Object -ExpandProperty LogFilePath
+        $SystemLogFilePath = [System.Environment]::ExpandEnvironmentVariables( $SystemEventLogFile)
+    
         foreach ($IISLog in $IISLogs) {
             Copy-Item -Path $IISLog.FullName -Destination $TempDirPath
         }
 
         foreach ($NDESConnectorLog in $NDESConnectorLogs) {
             Copy-Item -Path $NDESConnectorLog.FullName -Destination $TempDirPath
+        }
+
+        foreach ($NDESConnectorUpdateAgentLog in $NDESConnectorUpdateAgentLogs) {
+            Copy-Item -Path $NDESConnectorUpdateAgentLog.FullName -Destination $TempDirPath
         }
 
         foreach ($NDESPluginLog in $NDESPluginLogs) {
@@ -1699,6 +1766,13 @@ function Compress-LogFiles {
         foreach ($CRPLog in $CRPLogs) {
             Copy-Item -Path $CRPLogs.FullName -Destination $TempDirPath
         }
+
+        Copy-Item -Path $ApplicationLogFilePath -Destination $TempDirPath
+        Copy-Item -Path $SystemLogFilePath -Destination $TempDirPath
+
+
+        $GPresultPath = "$($TempDirPath)\gpresult_temp.html"
+        gpresult /h $GPresultPath
 
         $SCEPUserCertTemplateOutputFilePath = "$($TempDirPath)\SCEPUserCertTemplate.txt"
         certutil -v -template $SCEPUserCertTemplate > $SCEPUserCertTemplateOutputFilePath
