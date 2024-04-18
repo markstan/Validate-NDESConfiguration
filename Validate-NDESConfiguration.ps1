@@ -524,6 +524,69 @@ function Get-TCAInfo {
     }
 }
 
+function Get-IntuneServices {
+# Fetching the Services for Intune
+write-StatusMessage "Checking all the intune services" 
+
+# Define the list of services to check
+$services = @(
+    "AzureADConnectAgentUpdater",
+    "PFXCertificateConnectorSvc",
+    "PkiCreateConnectorSvc",
+    "PfxCreateLegacyConnectorSvc",
+    "PkiRevokeConnectorSvc"
+    "PKIConnectorSvc"
+    "WAPCSvc"
+    "WAPCUpdaterSvc"
+)
+
+# Iterate through each service and check its status
+foreach ($service in $services) {
+    $serviceStatus = Get-Service -Name $service -ErrorAction SilentlyContinue
+
+    if ($serviceStatus) {
+        Write-output "$service is $($serviceStatus.Status)"
+        	
+    } else {
+        Write-output "$service not found"
+        
+    }
+}
+}
+
+function Get-ConnectorCertificate {
+#Checking the validity of the Microsoft Intune ImportPFX Connector Certificate"
+Write-StatusMessage "Checking Microsoft Itnne ImportPFX Connector Certificate"
+
+$issuer = "Microsoft Intune ImportPFX Connector CA"
+$certs = Get-ChildItem -Path cert:\LocalMachine -Recurse
+$matchingCerts = $certs | Where-Object { $_.Issuer -match $issuer }
+
+
+if ($matchingCerts.Count -gt 0) {
+    if ($matchingCerts.Count -gt 1) {
+        Write-Output "$($matchingCerts.Count) certificates issued by '$issuer' found."
+        
+    }
+    
+    foreach ($cert in $matchingCerts) {
+       
+        $validFromDate = $cert.NotBefore
+        $validToDate = $cert.NotAfter       
+        if ($validToDate -gt (Get-Date)) {
+            Write-output "Certificate is valid from: $($validFromDate) until: $($validToDate)"
+            
+        } else {
+            Write-output "Certificate is expired! Expiration date: $($validToDate)"
+            
+        }
+    }
+} else {
+    Write-Output "No certificate issued by '$issuer' found."
+    
+}
+}
+
 function Test-Connectivity {
     param(
         # parameters here
@@ -1791,6 +1854,8 @@ Test-NDESServiceAccountProperties -NDESServiceAccount $NDESServiceAccount
 Get-EventLogData
 Test-PFXCertificateConnector
 Get-TCAInfo
+Get-IntuneServices
+Get-ConnectorCertificate
 Test-Connectivity
 Test-InstallRSATTools
 Test-IISApplicationPoolHealth
