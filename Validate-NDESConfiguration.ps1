@@ -35,7 +35,6 @@ Param(
 [parameter(Mandatory=$true,ParameterSetName="NormalRun")]
 [alias("sa")]
 [ValidateScript({
-        Write-Host "***** $($PSCmdlet.ParameterSetName)"
         if ($PSCmdlet.ParameterSetName -eq "Unattended"){
             Write-Output "Skipping service account tests for unattend"
         }         
@@ -66,17 +65,11 @@ Param(
 [ValidateScript({
     $Domain =  ((Get-WmiObject Win32_ComputerSystem).domain).split(".\")[0]
         if    ($_ -match $Domain)    {
-
-        $true
-
+            $true
         }
-
-        else {
-   
-        Throw "The Network Device Enrollment Server and the Certificate Authority are not members of the same Active Directory domain. This is an unsupported configuration."
-
+        else {   
+            Throw "The Network Device Enrollment Server and the Certificate Authority are not members of the same Active Directory domain. This is an unsupported configuration."
         }
-
     }
 )]
 [string]$IssuingCAServerFQDN,
@@ -91,9 +84,108 @@ Param(
 
 [parameter(ParameterSetName="Help")]
 [alias("u")]
-[switch]$usage
+[switch]$usage,
+
+[switch]$toStdOut,
+[switch]$SkipHTML
  
 ) 
+
+<#
+.Synopsis
+    Writes color-coded results to PowerShell window
+.DESCRIPTION
+      Displays results of tests and progress messages to the
+   PowerShell window. Color-codes results for ease of reading.
+.EXAMPLE
+   Write-Interactive -ResultBlob $ResultBlob
+.EXAMPLE
+   $ResultBlob | Write-Interactive
+.EXAMPLE
+    # Will write in default white text with a severity of 'Information'
+    Write-Interactive "hi"
+#>
+function Write-Interactive
+{
+    [CmdletBinding()]
+    [Alias()]
+    [OutputType([int])]
+    Param
+    (
+        # Message help description
+        [Parameter(Mandatory=$true,
+        ValueFromPipeline,
+                   ValueFromPipelineByPropertyName=$true,
+                   Position=0)]
+        $ResultBlob,
+        [Parameter(Mandatory=$false)]
+        $Result
+    )
+
+    Begin
+    {
+    }
+    Process
+    {
+
+    switch ($($ResultBlob.GetType()).FullName) {
+        System.Management.Automation.PSCustomObject
+        {
+
+            Write-Host "Rule:        "  -ForegroundColor Gray -NoNewline
+            Write-Host  $ResultBlob.RuleId  -ForegroundColor White
+            Write-Host "Description: "  -ForegroundColor Gray -NoNewline
+            Write-Host $ResultBlob.RuleDescription  -ForegroundColor White
+            
+            Write-Host "Result:      "  -ForegroundColor Gray -NoNewline
+            switch($ResultBlob.CheckResult) {
+                "Passed"
+                {
+                   Write-Host  $ResultBlob.CheckResult  -ForegroundColor Green
+                }
+                "Failed"
+                { 
+                    Write-Host $ResultBlob.CheckResult  -ForegroundColor Red  
+                }
+                "Warning"
+                { 
+                    Write-Host $ResultBlob.CheckResult  -ForegroundColor Yellow  
+                }
+            }
+
+            Write-Host "Message:     " -ForegroundColor Gray -NoNewline
+            Write-Host "$($ResultBlob.CheckResultMessage)`r`n" -ForegroundColor White
+        
+        }
+       
+       default {
+         switch($Result){
+
+            { ($_ -in ( "Passed", "1") )} {
+                $ResultBlob | Write-Host -ForegroundColor Green
+            }
+            { ($_ -in ( "Warning", "2") )} {
+                $ResultBlob | Write-Host -ForegroundColor Yellow
+            }
+            { ($_ -in ( "Failed", "3") )} {
+                $ResultBlob | Write-Host -ForegroundColor Red
+            }
+
+            Default {
+                $ResultBlob | Write-Host -ForegroundColor White
+            }
+         }
+       }
+
+       }
+    }
+         
+    End
+    {
+
+    }
+}
+
 
 function New-LogEntry {
         <#
@@ -127,13 +219,20 @@ function New-LogEntry {
           # 4 = Verbose
           [ValidateSet(1,2,3,4)]
           [string]$Severity = '1',
-            
-          [Parameter()]
-          [switch]$WriteStdOut,
-      
+             
           [Parameter()]
           # create log in format 
-          [string]$LogName = $Script:LogFilePath
+          [string]$LogName = $Script:LogFilePath,
+
+          # Write plain text to stdout instead of colorful text to host
+          [Parameter()]
+          [switch]
+          $WriteStdOut,
+
+          # Skip HTML output
+          [Parameter()]
+          [Switch]
+          $NoHTML
        
         )
       
@@ -152,9 +251,12 @@ function New-LogEntry {
               Level   = $Level
               Message = $Message
                   
-            } |  Export-Csv -Path $LogName -Append -Force -NoTypeInformation -Encoding Unicode
+            } |  Export-Csv -Path $LogName -Append -Force -NoTypeInformation -Encoding Unicode 
       
-            if (  $WriteStdOut -or ( ($Level -eq "Verbose") -and $debugMode)) { Write-Output $Message }
+#[switch]$toStdOut,
+#[switch]$SkipHTML##
+            if ($toStdOut -or  $WriteStdOut -or ( ($Level -eq "Verbose") -and $debugMode) ) { Write-Output $Message }
+            else { Write-Interactive $Message -Result $Severity}
           }
         }
         END {}
@@ -1657,7 +1759,7 @@ Confirm-Variables -NDESServiceAccount $NDESServiceAccount -IssuingCAServerFQDN $
 
 if ( -not ( Test-IsRSATADInstalled) ){
     Install-RSATAD
-}
+} 
 
 Initialize-LogFile
 Test-Variables
