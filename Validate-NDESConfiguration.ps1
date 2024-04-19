@@ -34,31 +34,7 @@ Param(
 
 [parameter(Mandatory=$true,ParameterSetName="NormalRun")]
 [alias("sa")]
-[ValidateScript({
-        if ($PSCmdlet.ParameterSetName -eq "Unattended"){
-            Write-Output "Skipping service account tests for unattend"
-        }         
-        else { 
-            if  ($_ -match ".\\.")    {    
-            $true
-            }
-            else {
-                Throw "Please use the format Domain\Username for the NDES Service Account variable."
-            }
-        
-            $EnteredDomain = $_.split("\")
-            $ads = New-Object -ComObject ADSystemInfo
-            $Domain = $ads.GetType().InvokeMember('DomainShortName','GetProperty', $Null, $ads, $Null)
-        
-                if ($EnteredDomain -like "$Domain") {
-                    $true
-                }
-                else {            
-                    Throw "Incorrect Domain. Ensure domain is '$($Domain)\<USERNAME>'" 
-                }
-       }
-    })]  
-[string]$NDESServiceAccount,
+[string]$NDESServiceAccount = "",
 
 [parameter(Mandatory=$true,ParameterSetName="NormalRun")]
 [alias("ca")]
@@ -87,7 +63,8 @@ Param(
 [switch]$usage,
 
 [switch]$toStdOut,
-[switch]$SkipHTML
+[switch]$SkipHTML,
+[switch]$ODC
  
 ) 
 
@@ -132,24 +109,24 @@ function Write-Interactive
         System.Management.Automation.PSCustomObject
         {
 
-            Write-Host "Rule:        "  -ForegroundColor Gray -NoNewline
-            Write-Host  $ResultBlob.RuleId  -ForegroundColor White
-            Write-Host "Description: "  -ForegroundColor Gray -NoNewline
-            Write-Host $ResultBlob.RuleDescription  -ForegroundColor White
+            Write-Host "Rule:        " -ForegroundColor Gray -NoNewline
+            Write-Host  $ResultBlob.RuleId -ForegroundColor White
+            Write-Host "Description: " -ForegroundColor Gray -NoNewline
+            Write-Host $ResultBlob.RuleDescription -ForegroundColor White
             
-            Write-Host "Result:      "  -ForegroundColor Gray -NoNewline
+            Write-Host "Result:      " -ForegroundColor Gray -NoNewline
             switch($ResultBlob.CheckResult) {
                 "Passed"
                 {
-                   Write-Host  $ResultBlob.CheckResult  -ForegroundColor Green
+                   Write-Host  $ResultBlob.CheckResult -ForegroundColor Green
                 }
                 "Failed"
                 { 
-                    Write-Host $ResultBlob.CheckResult  -ForegroundColor Red  
+                    Write-Host $ResultBlob.CheckResult -ForegroundColor Red  
                 }
                 "Warning"
                 { 
-                    Write-Host $ResultBlob.CheckResult  -ForegroundColor Yellow  
+                    Write-Host $ResultBlob.CheckResult -ForegroundColor Yellow  
                 }
             }
 
@@ -162,7 +139,7 @@ function Write-Interactive
          switch($Result){
 
             { ($_ -in ( "Passed", "1") )} {
-                $ResultBlob | Write-Host -ForegroundColor Green
+                $ResultBlob | Write-Host -ForegroundColor White
             }
             { ($_ -in ( "Warning", "2") )} {
                 $ResultBlob | Write-Host -ForegroundColor Yellow
@@ -185,7 +162,6 @@ function Write-Interactive
 
     }
 }
-
 
 function New-LogEntry {
         <#
@@ -237,7 +213,7 @@ function New-LogEntry {
         )
       
         BEGIN {
-          if ( ($null -eq $LogName) -or ($LogName -eq "")) { Write-Error "Please set variable `$global`:LogName." }
+          if ( ($null -eq $LogName) -or ($LogName -eq "")) { Write-Error "Please set variable `$script`:LogFilePath." }
         }
         PROCESS {
           # only log verbose if flag is set
@@ -263,27 +239,43 @@ function New-LogEntry {
       }
 
 function Write-StatusMessage {  
-        param($message)
+        param(
+            
+        [parameter(Mandatory=$true, ValueFromPipeline = $true, Position = 0)]
+        [string]$Message,
+      
+        [Parameter(Position = 1)]  
+        [ValidateSet(1,2,3,4)]
+        [string]$Severity = '1')
+ 
+        [string]$FormattedMessage = ""
+       
+        $FormattedMessage ="`r`n$line`r`n$message`r`n`r`n$line`r`n"
 
-        Write-Output "`r`n$line`r`n" 
-        Write-Output $message 
-        Write-Output ""
-
-        New-LogEntry $message 1
+        New-LogEntry $FormattedMessage -Severity $Severity
  }
-
 
 function Show-Usage {
 
-    Write-Output ""
-    Write-Output "-help                       -h         Displays the help."
-    Write-Output "-usage                      -u         Displays this usage information."
-    Write-Output "-NDESExternalHostname       -ed        External DNS name for the NDES server (SSL certificate subject will be checked for this. It should be in the SAN of the certificate if" 
-    Write-Output "                                       clients communicate directly with the NDES server)"
-    Write-Output "-NDESServiceAccount         -sa        Username of the NDES service account. Format is Domain\sAMAccountName, such as Contoso\NDES_SVC."
-    Write-Output "-IssuingCAServerFQDN        -ca        Name of the issuing CA to which you'll be connecting the NDES server.  Format is FQDN, such as 'MyIssuingCAServer.contoso.com'."
-    Write-Output "-SCEPUserCertTemplate       -t         Name of the SCEP Certificate template. Please note this is _not_ the display name of the template. Value should not contain spaces." 
-    Write-Output ""
+     
+    New-LogEntry @"
+    `r`n`r`n$line
+                        Usage
+$line
+
+    Switch                 | Alias  | Explanation 
+      -help                  -h     Displays help message
+      -usage                 -u     Displays this usage information
+      -NDESExternalHostname  -ed    External DNS name for the NDES server (SSL certificate subject will be checked for this. 
+                                    It should be in the SAN of the certificate if clients communicate directly with the NDES server)
+      -NDESServiceAccount    -sa    Username of the NDES service account. Format is Domain\sAMAccountName, such as Contoso\NDES_SVC.
+      -IssuingCAServerFQDN   -ca    Name of the issuing CA to which you'll be connecting the NDES server.  
+                                    Format is FQDN, such as 'MyIssuingCAServer.contoso.com'.
+      -SCEPUserCertTemplate  -t     Name of the SCEP Certificate template. Please note this is _not_ the display name of the template.
+                                        Value should not contain spaces.                                        
+`r`n$line`r`n`r`n
+"@      
+
 } 
 
 function Get-NDESHelp {
@@ -306,20 +298,18 @@ function Confirm-Variables {
         [string]$SCEPUserCertTemplate
     )
 
-    $line = "." * 60
-
     if ($PSCmdlet.ParameterSetName -eq "Unattended") {
         $MscepRaEku = '1.3.6.1.4.1.311.20.2.1' # CEP Encryption
         # Get cert authority from the Certificate Request Agent cert.
-        $IssuingCAServerFQDN = Get-Item 'Cert:\LocalMachine\My\*' | Where-Object { ($_.EnhancedKeyUsageList  -match $MscepRaEku) -and ($_.Extensions.Format(1)[0].split('(')[0] -replace "template="  -match "CEPEncryption" ) }
+        $IssuingCAServerFQDN = Get-Item 'Cert:\LocalMachine\My\*' | Where-Object { ($_.EnhancedKeyUsageList -match $MscepRaEku) -and ($_.Extensions.Format(1)[0].split('(')[0] -replace "template=" -match "CEPEncryption" ) }
         $SCEPUserCertTemplate = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Cryptography\MSCEP).EncryptionTemplate
         $confirmation = "y"
     }
     else {
         Write-StatusMessage @"
-        NDES Service Account      = $($NDESServiceAccount) 
-        Issuing CA Server         = $($IssuingCAServerFQDN)  
-        SCEP Certificate Template = $($SCEPUserCertTemplate)
+        NDES Service Account      = $NDESServiceAccount
+        Issuing CA Server         = $IssuingCAServerFQDN
+        SCEP Certificate Template = $SCEPUserCertTemplate
         $line
         Proceed with variables? [Y]es, [N]
 "@
@@ -328,11 +318,10 @@ function Confirm-Variables {
 
     if ($confirmation -eq 'y') {
  
-         Write-StatusMessage  @"
-            Initializing log file $($TempDirPath)\Validate-NDESConfig.log
-            NDESServiceAccount=$($NDESServiceAccount)
-            IssuingCAServer=$($IssuingCAServerFQDN)
-            SCEPCertificateTemplate=$($SCEPUserCertTemplate)
+        Write-StatusMessage  @" 
+        NDESServiceAccount= $NDESServiceAccount
+        IssuingCAServer= $IssuingCAServerFQDN
+        SCEPCertificateTemplate= $SCEPUserCertTemplate
 "@
     }
 }
@@ -344,12 +333,13 @@ Param(
     )
 
     $Script:SvcAcctIsComputer = $isSvcAcctLclSystem
-    New-LogEntry  "Service account is local system (computer) account = $isSvcAcctLclSystem" -Severity 1
+    New-LogEntry "Service account is local system (computer) account = $isSvcAcctLclSystem" -Severity 1
     }
  
+<# Returns the name of the service account#>
 function Get-NDESServiceAcct {
-    
-    if (  ($null -eq $NDESServiceAccount) -or ($NDESServiceAccount -eq "")  ) {
+        [string]$NDESServiceAccount = ""
+
         $CARegPath = "HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\PFXCertificateConnector\CA*"
 
         if (Test-Path $CARegPath ) {
@@ -363,32 +353,20 @@ function Get-NDESServiceAcct {
             }
         }
         else {
-            Write-Error "No certificate found in $CARegPath. Please resolve this issue and run the script again."
-            New-LogEntry "No certificate found in $CARegPath. Please resolve this issue and run the script again."  -Severity 3
+            New-LogEntry "No certificate found in $CARegPath. Please resolve this issue and run the script again." -Severity 3
 
             break
         }
-    }
-    New-LogEntry  "Service Account detected = $NDESServiceAccount" -Severity 1
-    $NDESServiceAccount
-
-}
-
-if ($help){
-    Get-NDESHelp
-    break
-}
-
-if ($usage){
-    Show-Usage
-    break
+ 
+    New-LogEntry "Service Account detected = $NDESServiceAccount" -Severity 1 
+    [string]$NDESServiceAccount
 }
 
 function Test-IsNDESInstalled {
         if (-not (Get-Service PFXCertificateConnectorSvc) ){    
-        Write-Error "Error: NDES Not installed" 
-        Write-Error "Exiting....................."
-        New-LogEntry  "NDES Not installed" -Severity 3
+        New-LogEntry "Error: NDES Not installed" -Severity 3 
+        New-LogEntry "Exiting....................." -Severity 3
+        New-LogEntry "NDES Not installed" -Severity 3
         break
     }
 }
@@ -404,9 +382,8 @@ function Test-IsRSATADInstalled {
 }
 
 function Install-RSATAD {
-
-    Write-Output "RSAT-AD-Tools-Feature is not installed. This Windows Feature is required to continue. This is a requirement for AD tests. Install now? [y/n]"
-    New-LogEntry  "Prompt: RSAT-AD-Tools-Feature is not installed. This Windows Feature is required to continue. This is a requirement for AD tests. Install now?" 2
+ 
+    New-LogEntry "RSAT-AD-Tools-Feature is not installed. This Windows Feature is required to continue. This is a requirement for AD tests. Install now?" -Severity 2
     $response = Read-Host -Prompt "[y/n]"
     New-LogEntry "User entered $response"
 
@@ -421,11 +398,10 @@ function Install-RSATAD {
 function Test-IsAADModuleInstalled {
 
     if (Get-Module ActiveDirectory -ListAvailable) {
-        New-LogEntry "ActiveDirectory module is installed." 1
+        New-LogEntry "ActiveDirectory module is installed." -Severity 1
     }
     else {
-        New-LogEntry "ActiveDirectory module is not installed. Please run this command to install it and re-run the script:`r`nInstall-Module ActiveDirectory" -Severity 3
-        Write-Error "ActiveDirectory module is not installed. Please run this command to install it and re-run the script:`r`nInstall-Module ActiveDirectory"
+        New-LogEntry "ActiveDirectory module is not installed. Please run this command to install it and re-run the script:`r`nInstall-Module ActiveDirectory" -Severity 3 
         break
     }
 
@@ -434,37 +410,34 @@ function Test-IsIISInstalled {
     if (-not (Get-WindowsFeature Web-WebServer).Installed){
 
         $script:IISNotInstalled = $true
-        Write-Warning "IIS is not installed. Some tests will not run as we're unable to import the WebAdministration module"
-        Write-Output ""
-        New-LogEntry  "IIS is not installed. Some tests will not run as we're unable to import the WebAdministration module"  -Severity 2
-    
+        New-LogEntry "IIS is not installed. Some tests will not run as we're unable to import the WebAdministration module" -Severity 2
     }
 
     else {
-        Import-Module WebAdministration | Out-Null
+        $null = Import-Module WebAdministration 
     }
 }
 
 function Test-OSVersion {
     Write-StatusMessage    "Checking Windows OS version..." 
   
-    New-LogEntry  "Checking OS Version"  1
+    New-LogEntry "Checking OS Version"  1
 
     $OSVersion = (Get-CimInstance -class Win32_OperatingSystem).Version
     $MinOSVersion = "6.3"
 
         if ([version]$OSVersion -lt [version]$MinOSVersion){
         
-            Write-Output "Error: Unsupported OS Version. NDES requires Windows Server 2012 R2 and above." 
-            New-LogEntry  "Unsupported OS Version. NDES requires Windows Server 2012 R2 and above." -Severity 3
+            New-LogEntry "Error: Unsupported OS Version. NDES requires Windows Server 2012 R2 and above." 
+            New-LogEntry "Unsupported OS Version. NDES requires Windows Server 2012 R2 and above." -Severity 3
             
             } 
         
         else {
         
-            Write-Output "Success: " 
-            Write-Output "OS Version: $OSVersion is supported."
-            New-LogEntry  "Server is version $($OSVersion)" -Severity 1
+            New-LogEntry "Success: " 
+            New-LogEntry "OS Version: $OSVersion is supported."
+            New-LogEntry "Server is version $($OSVersion)" -Severity 1
         
         }
 }
@@ -478,16 +451,16 @@ function Test-IEEnhancedSecurityMode {
     $escState = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}"
  
     if ($escState.IsInstalled -eq 0) {
-        Write-Output "Enhanced Security Configuration is not configured."  
-        New-LogEntry "Enhanced Security Configuration is not configured." 1
+        New-LogEntry "Enhanced Security Configuration is not configured."  
+        New-LogEntry "Enhanced Security Configuration is not configured." -Severity 1
     } else {
-        Write-Error "Enhanced Security Configuration is configured."  
-        New-LogEntry "Enhanced Security Configuration is configured."  3
+        New-LogEntry "Enhanced Security Configuration is configured." -Severity 3  
+        New-LogEntry "Enhanced Security Configuration is configured." -Severity 3
     }
 }
 
 function Test-PFXCertificateConnector {
-    Write-Output "Checking the `"Log on As`" for PFX Certificate Connector for Intune"  
+    New-LogEntry "Checking the `"Log on As`" for PFX Certificate Connector for Intune"  
     $service = Get-Service -Name "PFXCertificateConnectorSvc"
 
     if ($service) {
@@ -496,55 +469,48 @@ function Test-PFXCertificateConnector {
 
         # Check if the service is running as Local System or as a specific user
         if ($serviceProcess.StartName -eq "LocalSystem") {
-            Write-Output "$($service.Name) is running as Local System"  
+            New-LogEntry "$($service.Name) is running as Local System"  
         } else {
-            Write-Output "$($service.Name) is running as $($serviceProcess.StartName)"  
+            New-LogEntry "$($service.Name) is running as $($serviceProcess.StartName)"  
         }
     } else {
-        Write-Error "PFXCertificateConnectorSvc service not found"  
+        New-LogEntry "PFXCertificateConnectorSvc service not found" -Severity 3  
     }
 }
-
-function Test-Connectivity {
-    param(
-        # parameters here
-    )
-    # function code here
-}
-
+ 
 function Test-Variables {
     if ($PSCmdlet.ParameterSetName -eq "Unattended") {
         $MscepRaEku = '1.3.6.1.4.1.311.20.2.1' # CEP Encryption
         # Get cert authority from the Certificate Request Agent cert.
-        $IssuingCAServerFQDN = Get-Item 'Cert:\LocalMachine\My\*' | Where-Object { ($_.EnhancedKeyUsageList  -match $MscepRaEku) -and ($_.Extensions.Format(1)[0].split('(')[0] -replace "template="  -match "CEPEncryption" ) }
+        $IssuingCAServerFQDN = Get-Item 'Cert:\LocalMachine\My\*' | Where-Object { ($_.EnhancedKeyUsageList -match $MscepRaEku) -and ($_.Extensions.Format(1)[0].split('(')[0] -replace "template=" -match "CEPEncryption" ) }
          
         $SCEPUserCertTemplate = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Cryptography\MSCEP).EncryptionTemplate
-        $confirmation = "y"
+       
     }
     else {
         Write-StatusMessage @"
-        NDES Service Account      = $($NDESServiceAccount) 
-         
-        Issuing CA Server         = $($IssuingCAServerFQDN)  
-
-        SCEP Certificate Template = $($SCEPUserCertTemplate)
-        
+        NDES Service Account      = $($NDESServiceAccount)          
+        Issuing CA Server         = $($IssuingCAServerFQDN)
+        SCEP Certificate Template = $($SCEPUserCertTemplate)        
         $line
         
         Proceed with variables? [Y]es, [N]
 "@
         $confirmation = Read-Host
+        $confirmation
     }
 }
 
 function Initialize-LogFile {
-    Write-Output ""
-    Write-Output $line
-    New-LogEntry  "Initializing log file $($TempDirPath)\Validate-NDESConfig.log"  -Severity 1
-    New-LogEntry  "Proceeding with variables=YES"  -Severity 1
-    New-LogEntry  "NDESServiceAccount=$($NDESServiceAccount)" -Severity 1
-    New-LogEntry  "IssuingCAServer=$($IssuingCAServerFQDN)" -Severity 1
-    New-LogEntry  "SCEPCertificateTemplate=$($SCEPUserCertTemplate)" -Severity 1
+      
+    Write-StatusMessage @"
+    Initializing log file:
+         $LogFilePath 
+    Proceeding with variables=YES 
+    NDESServiceAccount = $NDESServiceAccount
+    IssuingCAServer= $IssuingCAServerFQDN
+     SCEPCertificateTemplate= $SCEPUserCertTemplate
+"@ -Severity 1
 }
 
 function Test-InstallRSATTools {
@@ -554,12 +520,6 @@ function Test-InstallRSATTools {
         Install-RSATAD
     }
 
-    Test-IsAADModuleInstalled
-    Test-IsIISInstalled
-    Test-OSVersion
-    Test-IEEnhancedSecurityMode
-    Test-NDESServiceAccountProperties -NDESServiceAccount $NDESServiceAccount
-    Get-EventLogData
 }
 
 function Test-WindowsFeaturesInstalled {
@@ -577,20 +537,17 @@ function Test-WindowsFeaturesInstalled {
         $FeatureDisplayName = $Feature.displayName
 
         if($Feature.installed){
-            Write-Output "Success:" 
-            Write-Output "$FeatureDisplayName Feature Installed"
-            New-LogEntry "$($FeatureDisplayName) Feature Installed" -Severity 1  
+            New-LogEntry "Success: $($FeatureDisplayName) feature is installed" -Severity 1  
         }
         else {
-            Write-Output "Error: $FeatureDisplayName Feature not installed!"  
-            New-LogEntry "$($FeatureDisplayName) Feature not installed!" -Severity 3  
+            New-LogEntry "Error: Required feature $FeatureDisplayName is not installed." -Severity 3  
         }
     }
 } 
 
 function Test-IISApplicationPoolHealth {
     Write-StatusMessage "Checking IIS Application Pool health..."  
-    New-LogEntry  "Checking IIS Application Pool health" -Severity 1
+    New-LogEntry "Checking IIS Application Pool health" -Severity 1
     
         if (-not ($IISNotInstalled -eq $true)){
     
@@ -606,64 +563,47 @@ function Test-IISApplicationPoolHealth {
     
             else {
     
-                Write-Output "Error: SCEP Application Pool missing!"  
-                Write-Output 'Please review "Step 3.1 - Configure prerequisites on the NDES server"'. 
-                Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure" 
-                New-LogEntry  "SCEP Application Pool missing"  -Severity 3
+                New-LogEntry @"
+                Error: SCEP Application Pool missing.
+                Please review this document: 
+                URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure 
+"@ -Severity 3
             
             }
         
-            if ($SvcAcctIsComputer) {
-                Write-Output ""
-                Write-Output $line
-                Write-Output ""
-                Write-Output "Skipping application pool account check since local system is used as the service account..." 
-                Write-Output ""
-                New-LogEntry  "Skipping application pool account check since local system is used as the service account" -Severity 1 
+            if ($SvcAcctIsComputer) { 
+                 
+                Write-StatusMessage "Skipping application pool account check since local system is used as the service account" -Severity 1 
             }
             else {
                 if ($IISSCEPAppPoolAccount -contains "$NDESServiceAccount"){
                 
-                Write-Output "Success: " 
-                Write-Output "Application Pool is configured to use "
-                Write-Output "$($IISSCEPAppPoolAccount)"
-                New-LogEntry  "Application Pool is configured to use $($IISSCEPAppPoolAccount)"  -Severity 1
+                New-LogEntry "Success: " 
+                New-LogEntry "Application Pool is configured to use "
+                New-LogEntry "$($IISSCEPAppPoolAccount)"
+                New-LogEntry "Application Pool is configured to use $($IISSCEPAppPoolAccount)" -Severity 1
                 
+                }                
+                else {    
+                    New-LogEntry @"
+                    Error: Application Pool is not configured to use the NDES Service Account
+                    Please review this article:
+                    URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure" 
+                    Application Pool is not configured to use the NDES Service Account
+"@ -Severity 3                
                 }
-                
-                else {
-    
-                Write-Output "Error: Application Pool is not configured to use the NDES Service Account"  
-                Write-Output 'Please review "Step 4.1 - Configure NDES for use with Intune".' 
-                Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure" 
-                New-LogEntry  "Application Pool is not configured to use the NDES Service Account"  -Severity 3
-                
-                }
             }
                     
-            if ($SCEPAppPoolRunning){
-                    
-                Write-Output "Success: " 
-                Write-Output "SCEP Application Pool is Started "
-                New-LogEntry  "SCEP Application Pool is Started"  -Severity 1
-                    
-            }
-                    
-            else {
-    
-                Write-Output "Error: SCEP Application Pool is stopped!"  
-                Write-Output "Please start the SCEP Application Pool via IIS Management Console. You should also review the Application Event log output for errors"
-                New-LogEntry  "SCEP Application Pool is stopped"  -Severity 3
-                    
-            }
-    
+            if ($SCEPAppPoolRunning){                    
+                New-LogEntry "Success:`r`nSCEP Application Pool is Started" -Severity 1                    
+            }                    
+            else {    
+                New-LogEntry "Error: SCEP Application Pool is stopped.`r`nPlease start the SCEP Application Pool via IIS Management Console. You should also review the Application Event log output for errors." -Severity 3                    
+            }    
         }
     
-        else {
-    
-            Write-Output "IIS is not installed." 
-            New-LogEntry  "IIS is not installed"  -Severity 3 
-    
+        else {     
+            New-LogEntry "IIS is not installed" -Severity 3     
         }
     
 }
@@ -685,58 +625,46 @@ function Test-NDESInstallParameters {
 
         Write-StatusMessage "Success:`r`nCorrect CSP used in install parameters"
          
-        Write-Output $InstallParams.Message
+        New-LogEntry $InstallParams.Message
         New-LogEntry "Correct CSP used in install parameters:" -Severity 1
         New-LogEntry "$($InstallParams.Message)" NDES_Eventvwr 1
 
     }
     else {
 
-        Write-StatusMessage "Error: Incorrect CSP selected during install. NDES only supports the CryptoAPI CSP."          
-        Write-Output $InstallParams.Message
-
-        New-LogEntry "Error: Incorrect CSP selected during install. NDES only supports the CryptoAPI CSP" -Severity 3 
-        New-LogEntry "$($InstallParams.Message)" NDES_Eventvwr 3
-    }
-
+        Write-StatusMessage "Error: Incorrect CSP selected during install. NDES only supports the CryptoAPI CSP." -Severity 3       
+        New-LogEntry $InstallParams.Message -Severit 3
+ 
+    } 
     $ErrorActionPreference = "Continue"
 }
 
 function Test-HTTPParamsRegKeys {
-    param ()
-
-    Write-StatusMessage "Checking registry HKLM:SYSTEM\CurrentControlSet\Services\HTTP\Parameters has been set to allow long URLs..."
+    param () 
     New-LogEntry "Checking registry (HKLM:SYSTEM\CurrentControlSet\Services\HTTP\Parameters) has been set to allow long URLs" -Severity 1
 
     if (-not ($IISNotInstalled -eq $true)) {
-        $MaxFieldLength = (Get-ItemProperty -Path HKLM:SYSTEM\CurrentControlSet\Services\HTTP\Parameters -Name MaxFieldLength).MaxfieldLength
+        $MaxFieldLength =  (Get-ItemProperty -Path HKLM:SYSTEM\CurrentControlSet\Services\HTTP\Parameters -Name MaxFieldLength).MaxfieldLength
         $MaxRequestBytes = (Get-ItemProperty -Path HKLM:SYSTEM\CurrentControlSet\Services\HTTP\Parameters -Name MaxRequestBytes).MaxRequestBytes
 
         if ($MaxFieldLength -notmatch "65534") {
-            Write-Output "Error: MaxFieldLength not set to 65534 in the registry!"
-            Write-Output ""
-            Write-Output 'Please review "Step 4.3 - Configure NDES for use with Intune".'
-            Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-            New-LogEntry "MaxFieldLength not set to 65534 in the registry" -Severity 3
+            New-LogEntry "Error: MaxFieldLength not set to 65534 in the registry." -Severity 3             
+            New-LogEntry 'Please review this article:'
+            New-LogEntry "URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure"
+ 
         } else {
-            Write-Output "Success: "
-            Write-Output "MaxFieldLength set correctly"
-            New-LogEntry "MaxFieldLength set correctly" -Severity 1
+            New-LogEntry "Success:`r`nMaxFieldLength set correctly" -Severity 1
         }
 
         if ($MaxRequestBytes -notmatch "65534") {
-            Write-Output "MaxRequestBytes not set to 65534 in the registry!"
-            Write-Output ""
-            Write-Output 'Please review "Step 4.3 - Configure NDES for use with Intune".'
-            Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure'"
-            New-LogEntry "MaxRequestBytes not set to 65534 in the registry" -Severity 3
+            New-LogEntry "MaxRequestBytes not set to 65534 in the registry." -Severity 3             
+            New-LogEntry 'Please review this article:'
+            New-LogEntry "URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure'"
+ 
         } else {
-            Write-Output "Success: "
-            Write-Output "MaxRequestBytes set correctly"
-            New-LogEntry "MaxRequestBytes set correctly" -Severity 1
+            New-LogEntry "Success:`r`nMaxRequestBytes set correctly" -Severity 1
         }
     } else {
-        Write-Error "IIS is not installed."
         New-LogEntry "IIS is not installed." -Severity 3
     }
 }
@@ -747,47 +675,42 @@ function Test-SPN {
         [string]$ADAccount
     )
 
-    Write-StatusMessage "Checking SPN has been set..." 
-    New-LogEntry "Checking SPN has been set" -Severity 1
+    Write-StatusMessage "Checking SPN has been set..."  -Severity 1
 
     $hostname = ([System.Net.Dns]::GetHostByName(($env:computerName))).hostname
 
     $spn = setspn.exe -L $ADAccount
 
     if ($spn -match $hostname){
-        Write-Output "Success: " 
-        Write-Output "Correct SPN set for the NDES service account:"
-        Write-Output ""
-        Write-Output $spn 
-        New-LogEntry "Correct SPN set for the NDES service account: $($spn)" -Severity 1
+        Write-StatusMessage @"
+        Success. Correct SPN set for the NDES service account:
+         
+        $spn
+"@ 
     }
     else {
-        Write-Output "Error: Missing or Incorrect SPN set for the NDES Service Account!"  
-        Write-Output 'Please review "Step 3.1c - Configure prerequisites on the NDES server".'
-        Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-        New-LogEntry "Missing or Incorrect SPN set for the NDES Service Account" -Severity 3 
+        New-LogEntry @"
+        Error: Missing or Incorrect SPN set for the NDES Service Account.
+        Please review this article:
+        URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure 
+"@ -Severity 3 
     }
 }
  
 function Test-IntermediateCerts {
     param ()
 
-    Write-StatusMessage "Checking there are no intermediate certs are in the Trusted Root store..."  
-    New-LogEntry "Checking there are no intermediate certs are in the Trusted Root store" -Severity 1
+    Write-StatusMessage "Checking there are no intermediate certs are in the Trusted Root store..." -Severity 1
 
     $IntermediateCertCheck = Get-Childitem cert:\LocalMachine\root -Recurse | Where-Object {$_.Issuer -ne $_.Subject}
 
     if ($IntermediateCertCheck){
-        Write-Output "Error: Intermediate certificate found in the Trusted Root store. This can cause undesired effects and should be removed."  
-        Write-Output "Certificates:"
-        Write-Output ""
-        Write-Output $IntermediateCertCheck
-        New-LogEntry "Intermediate certificate found in the Trusted Root store: $($IntermediateCertCheck)" -Severity 3
+        New-LogEntry "Error: Intermediate certificate found in the Trusted Root store. This can cause undesired effects and should be removed."  -Severity 3
+        New-LogEntry "Certificates:`r`n"   -Severity 3      
+        New-LogEntry $IntermediateCertCheck -Severity 3
     }
     else {
-        Write-Output "Success: " 
-        Write-Output "Trusted Root store does not contain any Intermediate certificates."
-        New-LogEntry "Trusted Root store does not contain any Intermediate certificates." -Severity 1
+        New-LogEntry "Success:`r`nTrusted Root store does not contain any Intermediate certificates." -Severity 1
     }
 } 
 
@@ -797,8 +720,7 @@ function Test-Certificates {
     # Set ErrorActionPreference to SilentlyContinue
     $ErrorActionPreference = "Silentlycontinue"
 
-    Write-StatusMessage "Checking the EnrollmentAgentOffline and CEPEncryption are present..."  
-    New-LogEntry "Checking the EnrollmentAgentOffline and CEPEncryption are present" -Severity 1
+    Write-StatusMessage "Checking the EnrollmentAgentOffline and CEPEncryption are present..."   -Severity 1
 
     $certs = Get-ChildItem cert:\LocalMachine\My\
 
@@ -830,34 +752,32 @@ function Test-Certificates {
     } 
     
     # Check if EnrollmentAgentOffline certificate is present
-    if ($EnrollmentAgentOffline) {
-        Write-Output "Success: EnrollmentAgentOffline certificate is present"
-        Write-Output "EnrollmentAgentOffline certificate is present and valid till: "
-        Write-Output "$($EnrollmentAgentOfflineNotAfter)"  
-        New-LogEntry "EnrollmentAgentOffline certificate is present" -Severity 1
+    if ($EnrollmentAgentOffline) {    
+        New-LogEntry "Success: `r`nEnrollmentAgentOffline certificate is present and valid till:$($EnrollmentAgentOfflineNotAfter)" -Severity 1
     }
     else {
-        Write-Output "Error: EnrollmentAgentOffline certificate is not present or expired !"
-        Write-Output "This can occur when an account without Enterprise Admin permissions installs NDES. You may need to remove the NDES role and reinstall with the correct permissions." 
-        Write-Output 'Please review "Step 3.1 - Configure prerequisites on the NDES server".' 
-        Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-        New-LogEntry "EnrollmentAgentOffline certificate is not present or expired" -Severity 3 
+       
+        New-LogEntry @"
+            Error: EnrollmentAgentOffline certificate is not present or expired. 
+            This can occur when an account without Enterprise Admin permissions installs NDES. You may need to remove the NDES role and reinstall with the correct permissions. 
+            Please refer to this article:
+            URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
+        "@    -Severity 3 
     }
     
     # Check if CEPEncryption certificate is present
     if ($CEPEncryption) {
-        Write-Output "Success: CEPEncryption certificate is presentnor expired !"
-        Write-Output "CEPEncryption is present and valid till: " 
-        Write-Output "$($CEPEncryptionNotAfter)" 
-        New-LogEntry "CEPEncryption certificate is present" -Severity 1
+         New-LogEntry "Success: CEPEncryption certificate is present and vaild till: $($CEPEncryptionNotAfter)" -Severity 1
     }
     else { 
-        Write-Output "Error: CEPEncryption certificate is not present!"
-        Write-Output "This can occur when an account without Enterprise Admin permissions installs NDES. You may need to remove the NDES role and reinstall with the correct permissions." 
-        Write-Output 'Please review "Step 3.1 - Configure prerequisites on the NDES server".' 
-        Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-        New-LogEntry "CEPEncryption certificate is not present or expired" -Severity 3
-    }
+       New-LogEntry @"
+          Error: CEPEncryption certificate is not present or expired. 
+          This can occur when an account without Enterprise Admin permissions installs NDES. You may need to remove the NDES role and reinstall with the correct permissions.  
+          Please review this article:
+          URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
+          CEPEncryption certificate is not present
+"@ -Severity 3
+}
 
     # Set ErrorActionPreference back to Continue
     $ErrorActionPreference = "Continue"
@@ -872,84 +792,64 @@ function Test-TemplateNameRegKey {
     New-LogEntry "Checking registry (HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP) has been set with the SCEP certificate template name" -Severity 1
 
     if (-not (Test-Path HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP)) {
-        Write-Output "Error: Registry key does not exist. This can occur if the NDES role has been installed but not configured."
-        Write-Output 'Please review "Step 3 - Configure prerequisites on the NDES server".'
-        Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-        New-LogEntry "MSCEP Registry key does not exist." -Severity 3
+        New-LogEntry @"
+                    Error: Registry key does not exist. This can occur if the NDES role has been installed but not configured.
+                    Please review this article:
+                    URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
+"@ -Severity 3
     }
     else {
-        $SignatureTemplate = (Get-ItemProperty -Path HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP\ -Name SignatureTemplate).SignatureTemplate
-        $EncryptionTemplate = (Get-ItemProperty -Path HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP\ -Name EncryptionTemplate).EncryptionTemplate
-        $GeneralPurposeTemplate = (Get-ItemProperty -Path HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP\ -Name GeneralPurposeTemplate).GeneralPurposeTemplate
-        $DefaultUsageTemplate = "IPSECIntermediateOffline"
+        $SignatureTemplate       = (Get-ItemProperty -Path HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP\ -Name SignatureTemplate).SignatureTemplate
+        $EncryptionTemplate      = (Get-ItemProperty -Path HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP\ -Name EncryptionTemplate).EncryptionTemplate
+        $GeneralPurposeTemplate  = (Get-ItemProperty -Path HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP\ -Name GeneralPurposeTemplate).GeneralPurposeTemplate
+        $DefaultUsageTemplate    = "IPSECIntermediateOffline"
 
         if ($SignatureTemplate -match $DefaultUsageTemplate -and $EncryptionTemplate -match $DefaultUsageTemplate -and $GeneralPurposeTemplate -match $DefaultUsageTemplate) {
-            Write-Output "Error: Registry has not been configured with the SCEP Certificate template name. Default values have _not_ been changed."
-            Write-Output 'Please review "Step 3.1 - Configure prerequisites on the NDES server".'
-            Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-            Write-Output ""
-            New-LogEntry "Registry has not been configured with the SCEP Certificate template name. Default values have _not_ been changed." -Severity 3
+            New-LogEntry @"
+            Error: Registry has not been configured with the SCEP Certificate template name. Default values have _not_ been changed.
+            Please review this article: 
+            URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
+"@ -Severity 3 
         }
         else {
-            Write-Output "One or more default values have been changed."
-            Write-Output ""
-            Write-Output "Checking SignatureTemplate key..."
-            Write-Output ""
+            New-LogEntry "One or more default values have been changed."             
+            New-LogEntry "Checking SignatureTemplate key..."
+             
             if ($SignatureTemplate -match $SCEPUserCertTemplate) {
-                Write-Output "Success: "
-                Write-Output "SCEP certificate template '$($SCEPUserCertTemplate)' has been written to the registry under the _SignatureTemplate_ key. Ensure this aligns with the usage specified on the SCEP template."
-                Write-Output ""
-                New-LogEntry "SCEP certificate template $($SCEPUserCertTemplate)' has been written to the registry under the _SignatureTemplate_ key" -Severity 1
+                New-LogEntry "Success:`r`nSCEP certificate template '$($SCEPUserCertTemplate)' has been written to the registry under the _SignatureTemplate_ key.`r`nEnsure this aligns with the usage specified on the SCEP template." -Severity 1
             }
-            else {
-                Write-Warning '"SignatureTemplate key does not match the SCEP certificate template name. Unless your template is explicitly set for the "Signature" purpose, this can safely be ignored."'
-                Write-Output ""
-                Write-Output "Registry value: "
-                Write-Output "$($SignatureTemplate)"
-                Write-Output ""
-                Write-Output "SCEP certificate template value: "
-                Write-Output "$($SCEPUserCertTemplate)"
-                Write-Output ""
-                New-LogEntry "SignatureTemplate key does not match the SCEP certificate template name.Registry value=$($SignatureTemplate)|SCEP certificate template value=$($SCEPUserCertTemplate)" -Severity 2
+            else {  
+                New-LogEntry "Registry value:`r`n$($SignatureTemplate)"                 
+                New-LogEntry "SCEP certificate template value:`r`n$($SCEPUserCertTemplate)"                 
+                New-LogEntry "SignatureTemplate key does not match the SCEP certificate template name. Registry value=$($SignatureTemplate)  |  SCEP certificate template value=$($SCEPUserCertTemplate)" -Severity 2
             }
 
-            Write-StatusMessage "Checking EncryptionTemplate key..."
+            Write-StatusMessage "Checking EncryptionTemplate key..." -Severity 1
             if ($EncryptionTemplate -match $SCEPUserCertTemplate) {
-                Write-Output "Success: "
-                Write-Output "SCEP certificate template '$($SCEPUserCertTemplate)' has been written to the registry under the _EncryptionTemplate_ key. Ensure this aligns with the usage specified on the SCEP template."
-                Write-Output ""
-                New-LogEntry "SCEP certificate template $($SCEPUserCertTemplate) has been written to the registry under the _EncryptionTemplate_ key" -Severity 1
+                New-LogEntry "Success: `r`nSCEP certificate template '$($SCEPUserCertTemplate)' has been written to the registry under the _EncryptionTemplate_ key. Ensure this aligns with the usage specified on the SCEP template." 
             }
             else {
-                Write-Warning '"EncryptionTemplate key does not match the SCEP certificate template name. Unless your template is explicitly set for the "Encryption" purpose, this can safely be ignored."'
-                Write-Output ""
-                Write-Output "Registry value: "
-                Write-Output "$($EncryptionTemplate)"
-                Write-Output ""
-                Write-Output "SCEP certificate template value: "
-                Write-Output "$($SCEPUserCertTemplate)"
-                Write-Output ""
+                New-LogEntry '"EncryptionTemplate key does not match the SCEP certificate template name. Unless your template is explicitly set for the "Encryption" purpose, this can safely be ignored." -Severity 2'
+                 
+                New-LogEntry "Registry value: "
+                New-LogEntry "$($EncryptionTemplate)"
+                 
+                New-LogEntry "SCEP certificate template value: "
+                New-LogEntry "$($SCEPUserCertTemplate)"
+                 
                 New-LogEntry "EncryptionTemplate key does not match the SCEP certificate template name.Registry value=$($EncryptionTemplate)|SCEP certificate template value=$($SCEPUserCertTemplate)" -Severity 2
-            }
-
-            Write-Output $line
-            Write-Output ""
-            Write-Output "Checking GeneralPurposeTemplate key..."
-            Write-Output ""
+            } 
+             
+            Write-StatusMessage "Checking GeneralPurposeTemplate key..." -Severity 1
+             
             if ($GeneralPurposeTemplate -match $SCEPUserCertTemplate) {
-                Write-Output "Success: "
-                Write-Output "SCEP certificate template '$($SCEPUserCertTemplate)' has been written to the registry under the _GeneralPurposeTemplate_ key. Ensure this aligns with the usage specified on the SCEP template"
-                New-LogEntry "SCEP certificate template $($SCEPUserCertTemplate) has been written to the registry under the _GeneralPurposeTemplate_ key" -Severity 1
+                New-LogEntry "Success: "
+                New-LogEntry "SCEP certificate template '$($SCEPUserCertTemplate)' has been written to the registry under the _GeneralPurposeTemplate_ key. Ensure this aligns with the usage specified on the SCEP template." -Severity 1
             }
             else {
-                Write-Warning '"GeneralPurposeTemplate key does not match the SCEP certificate template name. Unless your template is set for the "Signature and Encryption" (General) purpose, this can safely be ignored."'
-                Write-Output ""
-                Write-Output "Registry value: "
-                Write-Output "$($GeneralPurposeTemplate)"
-                Write-Output ""
-                Write-Output "SCEP certificate template value: "
-                Write-Output "$($SCEPUserCertTemplate)"
-                Write-Output ""
+                New-LogEntry '"GeneralPurposeTemplate key does not match the SCEP certificate template name. Unless your template is set for the "Signature and Encryption" (General) purpose, this can safely be ignored." -Severity 2'                 
+                New-LogEntry "Registry value:`r`n$($GeneralPurposeTemplate)" -Severity 2                 
+                New-LogEntry "SCEP certificate template value:`r`n$($SCEPUserCertTemplate)" -Severity 2                 
                 New-LogEntry "GeneralPurposeTemplate key does not match the SCEP certificate template name.Registry value=$($GeneralPurposeTemplate)|SCEP certificate template value=$($SCEPUserCertTemplate)" -Severity 2
             }
         }
@@ -959,8 +859,7 @@ function Test-TemplateNameRegKey {
 }
 
 function Test-ServerCertificate {
-    Write-StatusMessage "Checking IIS SSL certificate is valid for use..."
-    New-LogEntry "Checking IIS SSL certificate is valid for use" -Severity 1
+    Write-StatusMessage "Checking IIS SSL certificate is valid for use...Checking IIS SSL certificate is valid for use" -Severity 1
 
     $hostname = ([System.Net.Dns]::GetHostByName(($env:computerName))).hostname
     $serverAuthEKU = "1.3.6.1.5.5.7.3.1" # Server Authentication
@@ -986,36 +885,36 @@ function Test-ServerCertificate {
     if ($ServerCertObject.EnhancedKeyUsageList -match $serverAuthEKU -and (($ServerCertObject.Subject -match $hostname) -or `
         ($ServerCertObject.DnsNameList -match $hostname)) -and ($ServerCertObject.Issuer -notmatch $ServerCertObject.Subject)) {
 
-        Write-Output "Success: "
-        Write-Output "Certificate bound in IIS is valid:"
-        Write-Output ""
-        Write-Output "Subject: "
-        Write-Output "$($ServerCertObject.Subject)"
-        Write-Output ""
-        Write-Output "Thumbprint: "
-        Write-Output "$($ServerCertObject.Thumbprint)"
-        Write-Output ""
-        Write-Output "Valid Until: "
-        Write-Output "$($ServerCertObject.NotAfter)"
-        Write-Output ""
-        Write-Output "If this NDES server is in your perimeter network, please ensure the external hostname is shown below:"
+        New-LogEntry "Success: "
+        New-LogEntry "Certificate bound in IIS is valid:"
+         
+        New-LogEntry "Subject: "
+        New-LogEntry "$($ServerCertObject.Subject)"
+         
+        New-LogEntry "Thumbprint: "
+        New-LogEntry "$($ServerCertObject.Thumbprint)"
+         
+        New-LogEntry "Valid Until: "
+        New-LogEntry "$($ServerCertObject.NotAfter)"
+         
+        New-LogEntry "If this NDES server is in your perimeter network, please ensure the external hostname is shown below:"
         $DNSNameList = $ServerCertObject.DNSNameList.unicode
-        Write-Output ""
-        Write-Output "Internal and External hostnames: "
-        Write-Output "$($DNSNameList)"
+         
+        New-LogEntry "Internal and External hostnames: "
+        New-LogEntry "$($DNSNameList)"
         New-LogEntry "Certificate bound in IIS is valid. Subject:$($ServerCertObject.Subject)|Thumbprint:$($ServerCertObject.Thumbprint)|ValidUntil:$($ServerCertObject.NotAfter)|Internal and ExternalHostnames:$($DNSNameList)" -Severity 1
     } else {
-        Write-Output "Error: The certificate bound in IIS is not valid for use. Reason:"
-        Write-Output ""
+        New-LogEntry "Error: The certificate bound in IIS is not valid for use. Reason:"
+         
 
         if ($ServerCertObject.EnhancedKeyUsageList -match $serverAuthEKU) {
             $EKUValid = $true
         } else {
             $EKUValid = $false
 
-            Write-Output "Correct EKU: "
-            Write-Output "$($EKUValid)"
-            Write-Output ""
+            New-LogEntry "Correct EKU: "
+            New-LogEntry "$($EKUValid)"
+             
         }
 
         if ($ServerCertObject.Subject -match $hostname) {
@@ -1023,34 +922,31 @@ function Test-ServerCertificate {
         } else {
             $SubjectValid = $false
 
-            Write-Output "Correct Subject: "
-            Write-Output "$($SubjectValid)"
-            Write-Output ""
+            New-LogEntry "Correct Subject: "
+            New-LogEntry "$($SubjectValid)"
+             
         }
 
         if ($SelfSigned -eq $false) {
             Out-Null
         } else {
-            Write-Output "Is Self-Signed: "
-            Write-Output "$($SelfSigned)"
-            Write-Output ""
+            New-LogEntry "Is Self-Signed: "
+            New-LogEntry "$($SelfSigned)"
+             
         }
 
-        Write-Output 'Please review "Step 4 - Configure NDES for use with Intune>To Install and bind certificates on the NDES Server".'
-        Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-        New-LogEntry "The certificate bound in IIS is not valid for use. CorrectEKU=$($EKUValid)|CorrectSubject=$($SubjectValid)|IsSelfSigned=$($SelfSigned)" -Severity 3
+        New-LogEntry @"
+                        Please review this article:
+                        URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
+                        The certificate bound in IIS is not valid for use. 
+                        CorrectEKU=$($EKUValid)|CorrectSubject=$($SubjectValid)|IsSelfSigned=$($SelfSigned)
+"@ -Severity 3
     }
 }
 
-function Test-ClientCertificate {
-    Write-Output ""
-    Write-Output $line
-    Write-Output ""
-    Write-Output "Checking encrypting certificate is valid for use..." 
-    Write-Output ""
+function Test-ClientCertificate { 
     New-LogEntry "Checking encrypting certificate is valid for use..." -Severity 1
-
-    $hostname = ([System.Net.Dns]::GetHostByName(($env:computerName))).hostname
+ 
     $clientAuthEku = "1.3.6.1.5.5.7.3.2" # Client Authentication
     $NDESCertThumbprint = (Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\PFXCertificateConnector -Name EncryptionCertThumbprint).EncryptionCertThumbprint
     $ClientCertObject = Get-ChildItem Cert:\LocalMachine\My\$NDESCertThumbprint
@@ -1062,68 +958,53 @@ function Test-ClientCertificate {
     }
 
     if ($ClientCertObject.EnhancedKeyUsageList -match $clientAuthEku -and $ClientCertObject.Issuer -notmatch $ClientCertObject.Subject) {
-        Write-Output "Success: " 
-        Write-Output "Client certificate bound to NDES Connector is valid:"
-        Write-Output ""
-        Write-Output "Subject: "
-        Write-Output "$($ClientCertObject.Subject)" 
-        Write-Output ""
-        Write-Output "Thumbprint: "
-        Write-Output "$($ClientCertObject.Thumbprint)" 
-        Write-Output ""
-        Write-Output "Valid Until: "
-        Write-Output "$($ClientCertObject.NotAfter)" 
-        New-LogEntry "Client certificate bound to NDES Connector is valid. Subject:$($ClientCertObject.Subject)|Thumbprint:$($ClientCertObject.Thumbprint)|ValidUntil:$($ClientCertObject.NotAfter)" -Severity 1
+        New-LogEntry "Success: Client certificate bound to NDES Connector is valid"         
+        New-LogEntry "Subject: $($ClientCertObject.Subject)"          
+        New-LogEntry "Thumbprint: $($ClientCertObject.Thumbprint)"         
+        New-LogEntry "Valid Until:`r`n $($ClientCertObject.NotAfter)"  
     } else {
-        Write-Error "Error: The certificate bound to the NDES Connector is not valid for use. Reason:"  
+        New-LogEntry "Error: The certificate bound to the NDES Connector is not valid for use. Reason:" -Severity 3  
         
         if ($ClientCertObject.EnhancedKeyUsageList -match $clientAuthEku) {                
             $ClientCertEKUValid = $true
         } else {                
             $ClientCertEKUValid = $false
 
-            Write-Output "Correct EKU: "
-            Write-Output "$($ClientCertEKUValid)" 
-            Write-Output ""
+            New-LogEntry "Correct EKU: $($ClientCertEKUValid)" -Severity 1
+             
         }
 
         if ($ClientCertSelfSigned -eq $false) {               
             New-LogEntry "ClientCertSelfSigned = $ClientCertSelfSigned" -Severity 3              
         } else {
-            Write-Output "Is Self-Signed: "
-            Write-Output "$($ClientCertSelfSigned)" 
-            Write-Output ""
+            New-LogEntry "Is Self-Signed: $ClientCertSelfSigned" -Severity 1             
         }
 
-        Write-Output 'Please review "Step 4 - Configure NDES for use with Intune>To Install and bind certificates on the NDES Server".'
-        Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-        New-LogEntry "The certificate bound to the NDES Connector is not valid for use. CorrectEKU=$ClientCertEKUValid IsSelfSigned=$ClientCertSelfSigned" -Severity 3
+        New-LogEntry @"
+                      Please review this article: 
+                      URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
+                      The certificate bound to the NDES Connector is not valid for use. CorrectEKU= $ClientCertEKUValid IsSelfSigned= $ClientCertSelfSigned
+"@ -Severity 3
     }
 }
  
 function Test-InternalNdesUrl {
-    Write-Output ""
-    Write-Output $line
+      
     $hostname = ([System.Net.Dns]::GetHostByName(($env:computerName))).hostname
-    Write-Output ""
-    Write-Output "Checking behaviour of internal NDES URL: " 
-    Write-Output "https://$hostname/certsrv/mscep/mscep.dll" 
-    Write-Output ""
-    New-LogEntry "Checking behaviour of internal NDES URL" -Severity 1
-    New-LogEntry "Https://$hostname/certsrv/mscep/mscep.dll" -Severity 1
+           
+    Write-StatusMessage "Checking behaviour of internal NDES URL at Https://$hostname/certsrv/mscep/mscep.dll" -Severity 1
 
     $Statuscode = try {
         (Invoke-WebRequest -Uri "https://$hostname/certsrv/mscep/mscep.dll").StatusCode
-    } catch {
-        $_.Exception.Response.StatusCode.Value__
+    } catch { 
+        $_ | New-LogEntry -Severity 3
     }
 
-    if ($statuscode -eq "200") {
-        Write-Output "Error: https://$hostname/certsrv/mscep/mscep.dll returns 200 OK. This usually signifies an error with the Intune Connector registering itself or not being installed." 
+    if ($statuscode -eq "200") { 
         New-LogEntry "https://$hostname/certsrv/mscep/mscep.dll returns 200 OK. This usually signifies an error with the Intune Connector registering itself or the service is not installed" -Severity 3
     } elseif ($statuscode -eq "403") {
-        Write-Output "Trying to retrieve CA Capabilities..." 
-        Write-Output ""
+        New-LogEntry "Trying to retrieve CA Capabilities..." 
+         
         try {
             $Newstatuscode = (Invoke-WebRequest -Uri "https://$hostname/certsrv/mscep/mscep.dll?operation=GetCACaps`&message=test").StatusCode
         } catch {
@@ -1135,54 +1016,52 @@ function Test-InternalNdesUrl {
         }
 
         if ($CACaps) {
-            Write-Output "Success: " 
-            Write-Output "CA Capabilities retrieved:"
-            Write-Output ""
-            Write-Output $CACaps
-            New-LogEntry "CA Capabilities retrieved:$CACaps" -Severity 1
+            New-LogEntry "Success:`r`nCA Capabilities retrieved:`r`n" -Severity 1             
+            New-LogEntry $CACaps  -Severity 1
         }
     } else {
-        Write-Output "Error: Unexpected Error code! This usually signifies an error with the Intune Connector registering itself or not being installed" 
-        Write-Output "Expected value is a 403. We received a $($Statuscode). This could be down to a missing reboot post policy module install. Verify last boot time and module install time further down the validation."
-        New-LogEntry  "Unexpected Error code. Expected: 403 | Received: $Statuscode"  -Severity 3
+        New-LogEntry @"
+        
+        Error: Unexpected Error code. This usually signifies an error with the Intune Connector registering itself or not being installed.
+        Expected value is a 403. We received a $($Statuscode). This could be down to a missing reboot after the policy module installation. 
+        Verify last boot time and module install time further down the validation.
+"@ -Severity 3
+ 
     }
    }
         
 #endregion
 
 function Test-LastBootTime {
-    Write-Output ""
-    Write-Output $line
-    Write-Output ""
-    Write-Output "Checking Server's last boot time..." 
-    Write-Output ""
-    New-LogEntry "Checking last boot time of the server" -Severity 1
+      
+    Write-StatusMessage "Checking last boot time of the server" -Severity 1
 
     $LastBoot = (Get-WmiObject win32_operatingsystem | Select-Object csname, @{LABEL='LastBootUpTime';EXPRESSION={$_.ConverttoDateTime($_.lastbootuptime)}}).lastbootuptime
 
-    Write-StatusMessage @"
-Server last rebooted: $LastBoot
-Please ensure a reboot has taken place _after_ all registry changes and installing the NDES Connector. IISRESET is _not_ sufficient.
-"@  
+    New-LogEntry @"
+        Server last rebooted: $LastBoot
 
-    New-LogEntry "LastBootTime: $LastBoot" -Severity 1
+        Please ensure a reboot has taken place _after_ all registry changes and installing the NDES Connector. IISRESET is _not_ sufficient.
+"@ -Severity 1
 }
 
 function Test-IntuneConnectorInstall {
-    Write-StatusMessage "Checking if Intune Connector is installed..."
-    New-LogEntry "Checking Intune Connector is installed" -Severity 1
+    Write-StatusMessage "Checking if Intune Connector is installed..." -Severity 1
 
     if ($IntuneConnector = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate | Where-Object {$_.DisplayName -eq "Certificate Connector for Microsoft Intune"}) {
         $installDate = [datetime]::ParseExact($IntuneConnector.InstallDate, 'yyyymmdd', $null).ToString('dd-mm-yyyy')
-        Write-Output "Success: $($IntuneConnector.DisplayName) was installed on $installDate and is version $($IntuneConnector.DisplayVersion)"
-        Write-Output ""
-        New-LogEntry "ConnectorVersion: $IntuneConnector" -Severity 1
+        New-LogEntry "Success: $($IntuneConnector.DisplayName) was installed on $installDate and is version $($IntuneConnector.DisplayVersion)"
+         
+        New-LogEntry "ConnectorVersion: $IntuneConnector" -Severity 1 
     } else {
-        Write-Output "Error: Intune Connector not installed"
-        Write-Output 'Please review "Step 5 - Enable, install, and configure the Intune certificate connector".'
-        Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-        Write-Output ""
-        New-LogEntry "ConnectorNotInstalled" -Severity 3
+        New-LogEntry @"
+        
+        Error: Intune Connector not installed 
+
+        New-LogEntry ''Please review this article: 
+        New-LogEntry "URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
+"@ -Severity 3
+ 
     }
 }
 
@@ -1234,19 +1113,19 @@ function Test-IIS_Log {
         # Output the log objects
         $RecentrequestinIIS = $logObjects | Select-Object -First 9
 
-        Write-Output $RecentrequestinIIS
+        New-LogEntry $RecentrequestinIIS
     }
     } else {
-        Write-Output "No log files found in the specified path."
+        New-LogEntry "No log files found in the specified path."
     }
 }
 
 function Test-IntuneConnectorRegKeys {
-    Write-Output ""
-    Write-Output $line
-    Write-Output ""
-    Write-Output "Checking Intune Connector registry keys are intact" 
-    Write-Output ""
+     
+    New-LogEntry $line
+     
+    New-LogEntry "Checking Intune Connector registry keys are intact" 
+     
     New-LogEntry "Checking Intune Connector registry keys are intact" -Severity 1
     $ErrorActionPreference = "SilentlyContinue"
 
@@ -1255,59 +1134,46 @@ function Test-IntuneConnectorRegKeys {
     $SigningCertificate = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\MicrosoftIntune\NDESConnector\SigningCertificate"
 
     if (-not (Test-Path $KeyRecoveryAgentCertificate)) {
-        Write-Output "Error: KeyRecoveryAgentCertificate Registry key does not exist." 
-        Write-Output ""
+        New-LogEntry "Error: KeyRecoveryAgentCertificate Registry key does not exist." 
+         
         New-LogEntry "KeyRecoveryAgentCertificate Registry key does not exist." -Severity 3 
     }
     else {
         $KeyRecoveryAgentCertificatePresent = (Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\NDESConnector\ -Name KeyRecoveryAgentCertificate).KeyRecoveryAgentCertificate
 
         if (-not ($KeyRecoveryAgentCertificatePresent)) {
-            Write-Warning "KeyRecoveryAgentCertificate registry key exists but has no value"
-            New-LogEntry "KeyRecoveryAgentCertificate missing value" -Severity 2
+            New-LogEntry "KeyRecoveryAgentCertificate registry key exists but has no value" -Severity 2 
         }
         else {
-            Write-Output "Success: " 
-            Write-Output "KeyRecoveryAgentCertificate registry key exists"
-            New-LogEntry "KeyRecoveryAgentCertificate registry key exists" -Severity 1
+            New-LogEntry "Success: `r`nKeyRecoveryAgentCertificate registry key exists" -Severity 1
         }
     }
 
-    if (-not (Test-Path $PfxSigningCertificate)) {
-        Write-Output "Error: PfxSigningCertificate Registry key does not exist." 
-        Write-Output ""
+    if (-not (Test-Path $PfxSigningCertificate)) { 
         New-LogEntry "PfxSigningCertificate Registry key does not exist." -Severity 3 
     }
     else {
         $PfxSigningCertificatePresent = (Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\NDESConnector\ -Name PfxSigningCertificate).PfxSigningCertificate
 
         if (-not ($PfxSigningCertificatePresent)) {
-            Write-Warning "PfxSigningCertificate registry key exists but has no value"
-            New-LogEntry "PfxSigningCertificate missing Value" -Severity 2
+            New-LogEntry "PfxSigningCertificate registry key exists but has no value" -Severity 2 
         }
         else {
-            Write-Output "Success: " 
-            Write-Output "PfxSigningCertificate registry keys exists"
-            New-LogEntry "PfxSigningCertificate registry key exists" -Severity 1
+            New-LogEntry "Success: `r`nPfxSigningCertificate registry key exists" -Severity 1
         }
     }
 
-    if (-not (Test-Path $SigningCertificate)) {
-        Write-Output "Error: SigningCertificate Registry key does not exist." 
-        Write-Output ""
+    if (-not (Test-Path $SigningCertificate)) { 
         New-LogEntry "SigningCertificate Registry key does not exist" -Severity 3  
     }
     else {
         $SigningCertificatePresent = (Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\NDESConnector\ -Name SigningCertificate).SigningCertificate
 
         if (-not ($SigningCertificatePresent)) {
-            Write-Warning "SigningCertificate registry key exists but has no value"
             New-LogEntry "SigningCertificate registry key exists but has no value" -Severity 2
         }
         else {
-            Write-Output "Success: " 
-            Write-Output "SigningCertificate registry key exists"
-            New-LogEntry "SigningCertificate registry key exists" -Severity 1
+            New-LogEntry "Success: SigningCertificate registry key exists" -Severity 1
         }
     }
 
@@ -1320,28 +1186,20 @@ function Get-EventLogData {
     )
 
     $ErrorActionPreference = "SilentlyContinue"
-
-    Write-Output ""
-    Write-Output $line
-    Write-Output ""
-    Write-Output "Checking Event logs for pertinent errors..." 
-    Write-Output ""
-    New-LogEntry "Checking Event logs for pertinent errors" -Severity 1
+ 
+    Write-StatusMessage "Checking Event logs for relevent errors" -Severity 1
 
     if (-not (Get-EventLog -LogName "Microsoft Intune Connector" -EntryType Error -After (Get-Date).AddDays(-$EventLogCollDays) -ErrorAction SilentlyContinue)) {
-        Write-Output "Success: " 
-        Write-Output "No errors found in the Microsoft Intune Connector"
-        Write-Output ""
-        New-LogEntry "No errors found in the Microsoft Intune Connector" -Severity 1
+ 
+        New-LogEntry "Success: No errors found in the Microsoft Intune Connector" -Severity 1
     }
     else {
-        Write-Warning "Errors found in the Microsoft Intune Connector Event log. Please see below for the most recent 5, and investigate further in Event Viewer."
-        Write-Output ""
+        New-LogEntry "Errors found in the Microsoft Intune Connector Event log. Please see below for the most recent 5, and investigate further in Event Viewer." -Severity 2
+         
         $EventsCol1 = Get-EventLog -LogName "Microsoft Intune Connector" -EntryType Error -After (Get-Date).AddDays(-$EventLogCollDays) -Newest 5 | Select-Object TimeGenerated, Source, Message
         $EventsCol1 | Format-List
         New-LogEntry "Errors found in the Microsoft Intune Connector Event log" NDES_Eventvwr 3
-        $i = 0
-        $count = @($EventsCol1).Count
+        $i = 0 
 
         foreach ($item in $EventsCol1) {
             New-LogEntry "$($EventsCol1[$i].TimeGenerated);$($EventsCol1[$i].Message);$($EventsCol1[$i].Source)" NDES_Eventvwr 3
@@ -1350,75 +1208,30 @@ function Get-EventLogData {
     }
 
     if (-not (Get-EventLog -LogName "Application" -EntryType Error -Source NDESConnector, Microsoft-Windows-NetworkDeviceEnrollmentService -After (Get-Date).AddDays(-$EventLogCollDays) -ErrorAction SilentlyContinue)) {
-        Write-Output "Success: " 
-        Write-Output "No errors found in the Application log from source NetworkDeviceEnrollmentService or NDESConnector"
-        New-LogEntry "No errors found in the Application log from source NetworkDeviceEnrollmentService or NDESConnector" -Severity 1
+          New-LogEntry "Success: No errors found in the Application log from source NetworkDeviceEnrollmentService or NDESConnector" -Severity 1
     }
     else {
-        Write-Warning "Errors found in the Application Event log for source NetworkDeviceEnrollmentService or NDESConnector. Please see below for the most recent 5, and investigate further in Event Viewer."
-        Write-Output ""
+        New-LogEntry "Errors found in the Application Event log for source NetworkDeviceEnrollmentService or NDESConnector. Please see below for the most recent 5, and investigate further in Event Viewer." -Severity 2
+         
         $EventsCol2 = Get-EventLog -LogName "Application" -EntryType Error -Source NDESConnector, Microsoft-Windows-NetworkDeviceEnrollmentService -After (Get-Date).AddDays(-$EventLogCollDays) -Newest 5 | Select-Object TimeGenerated, Source, Message
         $EventsCol2 | Format-List
-        $i = 0
-        $count = @($EventsCol2).Count
+        $i = 0 
 
         foreach ($item in $EventsCol2) {
-            New-LogEntry "$($EventsCol2[$i].TimeGenerated);$($EventsCol2[$i].Message);$($EventsCol2[$i].Source)" NDES_Eventvwr 3
+            New-LogEntry "$($EventsCol2[$i].TimeGenerated);$($EventsCol2[$i].Message);$($EventsCol2[$i].Source)" -Severity 3
             $i++
         }
     }
 
     $ErrorActionPreference = "Continue"
 }
-
-function Test-Connectivity {
-    param(
-        [string]$uniqueURL = "autoupdate.msappproxy.net",
-        [int]$port = 443
-    )
-
-    Write-StatusMessage "Checking Connectivity to $uniqueURL" 
-
-    try {
-        $error.Clear()
-        $connectionTest = $false
-
-        $connection = New-Object System.Net.Sockets.TCPClient
-        $connection.ReceiveTimeout = 500
-        $connection.SendTimeout = 500 
-        $result = $connection.BeginConnect($uniqueURL, $port, $null, $null)
-        $wait = $result.AsyncWaitHandle.WaitOne(5000, $false)
-
-        if ($wait -and !$connection.Client.Connected) {
-            $connection.Close()
-            $connectionTest = $false
-        } elseif (!$wait) {
-            $connection.Close()
-            $connectionTest = $false
-        } else {
-            $connection.EndConnect($result) | Out-Null
-            $connectionTest = $connection.Connected
-        }
-        
-        if ($connectionTest) {
-            Write-Output "Connection to $uniqueURL on port $port is successful."  
-        } else {
-            Write-Error "Connection to $uniqueURL on port $port failed."  
-        }
-    }
-    catch {
-        Write-Error "Error connecting to $uniqueURL. Please test that the service account has internet access."
-        New-LogEntry "Unable to connect to $uniqueURL."
-    }
-} 
-
+ 
 function Test-NDESServiceAccountProperties {
     param (
         [string]$NDESServiceAccount
     )
-
-    Write-StatusMessage "Checking NDES Service Account properties in Active Directory..." 
-    New-LogEntry "Checking NDES Service Account properties in Active Directory" -Severity 1
+ 
+    Write-StatusMessage "Checking NDES Service Account $NDESServiceAccount properties in Active Directory" -Severity 1
 
     $ADAccount = $NDESServiceAccount.split("\")[1]
     if ($SvcAcctIsComputer) {
@@ -1429,12 +1242,10 @@ function Test-NDESServiceAccountProperties {
     }
 
     if ($ADAccountProps.enabled -ne $true -OR $ADAccountProps.PasswordExpired -ne $false -OR $ADAccountProps.LockedOut -eq $true) {
-        Write-StatusMessage "Error: Problem with the AD account. Please see output below to determine the issue"       
-        New-LogEntry "Problem with the AD account. Please see output below to determine the issue" -Severity 3
+        Write-StatusMessage "Error: Problem with the AD account. Please see output below to determine the issue" -Severity 3
     }
     else {
-        Write-StatusMessage "Success:`r`nNDES Service Account seems to be in working order:"
-        New-LogEntry "NDES Service Account seems to be in working order" -Severity 1
+        Write-StatusMessage "Success:`r`nNDES Service Account seems to be in working order:"  -Severity 1
     }
 
     $msg = $ADAccountProps | Format-List SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut
@@ -1443,20 +1254,17 @@ function Test-NDESServiceAccountProperties {
 } 
 
 function Test-NDESServiceAccountLocalPermissions {
-    Write-StatusMessage "Checking NDES Service Account local permissions..." 
-    New-LogEntry "Checking NDES Service Account local permissions" -Severity 1 
+    Write-StatusMessage "Checking NDES Service Account local permissions..."   -Severity 1 
 
     if ($SvcAcctIsComputer) { 
-        Write-StatusMessage "Skipping NDES Service Account local permissions since local system is used as the service account..." 
-        New-LogEntry "Skipping NDES Service Account local permissions since local system is used as the service account" -Severity 1 
+        Write-StatusMessage "Skipping NDES Service Account local permissions since local system is used as the service account..." -Severity 1 
     }
     else {
         if ((net localgroup) -match "Administrators"){
             $LocalAdminsMember = ((net localgroup Administrators))
 
             if ($LocalAdminsMember -like "*$NDESServiceAccount*"){
-                Write-Warning "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use the IIS_IUSERS local group instead."
-                New-LogEntry "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use IIS_IUSERS instead." -Severity 2
+                New-LogEntry "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use the IIS_IUSERS local group instead." -Severity 2 
             }
             else {
                 Write-StatusMessage "Success:`r`nNDES Service account is not a member of the local Administrators group"
@@ -1483,135 +1291,36 @@ function Test-Connectivity {
         $result = $connection.BeginConnect($uniqueURL, $port, $null, $null)
         $wait = $result.AsyncWaitHandle.WaitOne(5000, $false)
 
-        if ($wait -and !$connection.Client.Connected) {
+        if ($wait -and (-not $connection.Client.Connected) ){
             $connection.Close()
             $connectionTest = $false
-        } elseif (!$wait) {
+        } elseif (-not $wait) {
             $connection.Close()
             $connectionTest = $false
         } else {
-            $connection.EndConnect($result) | Out-Null
+            $null = $connection.EndConnect($result) 
             $connectionTest = $connection.Connected
         }
         
         if ($connectionTest) {
-            Write-Output "Connection to $uniqueURL on port $port is successful."  
+            New-LogEntry "Connection to $uniqueURL on port $port is successful."  -Severity 1
         } else {
-            Write-Error "Connection to $uniqueURL on port $port failed."  
+            New-LogEntry "Connection to $uniqueURL on port $port failed." -Severity 3  
         }
     }
     catch {
-        Write-Error "Error connecting to $uniqueURL. Please test that the service account has internet access."
-        New-LogEntry "Unable to connect to $uniqueURL."
+        New-LogEntry "Error connecting to $uniqueURL. Please test that the service account has internet access." -Severity 3
+   
     }
 } 
 
-function Test-NDESServiceAccountProperties {
-    param (
-        [string]$NDESServiceAccount
-    )
-
-    Write-StatusMessage "Checking NDES Service Account properties in Active Directory..." 
-    New-LogEntry "Checking NDES Service Account properties in Active Directory" -Severity 1
-
-    $ADAccount = $NDESServiceAccount.split("\")[1]
-    if ($SvcAcctIsComputer) {
-        $ADAccountProps = Get-ADComputer $ADAccount -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut
-    }
-    else {
-        $ADAccountProps = Get-ADUser $ADAccount -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut
-    }
-
-    if ($ADAccountProps.enabled -ne $true -OR $ADAccountProps.PasswordExpired -ne $false -OR $ADAccountProps.LockedOut -eq $true) {
-        Write-StatusMessage "Error: Problem with the AD account. Please see output below to determine the issue"       
-        New-LogEntry "Problem with the AD account. Please see output below to determine the issue" -Severity 3
-    }
-    else {
-        Write-StatusMessage "Success:`r`nNDES Service Account seems to be in working order:"
-        New-LogEntry "NDES Service Account seems to be in working order" -Severity 1
-    }
-
-    $msg = $ADAccountProps | Format-List SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut
-    $msg
-    New-LogEntry "$msg" -Severity 1
-} 
-function Test-Connectivity {
-    param(
-        [string]$uniqueURL = "autoupdate.msappproxy.net",
-        [int]$port = 443
-    )
-
-    Write-StatusMessage "Checking Connectivity to $uniqueURL" 
-
-    try {
-        $error.Clear()
-        $connectionTest = $false
-
-        $connection = New-Object System.Net.Sockets.TCPClient
-        $connection.ReceiveTimeout = 500
-        $connection.SendTimeout = 500 
-        $result = $connection.BeginConnect($uniqueURL, $port, $null, $null)
-        $wait = $result.AsyncWaitHandle.WaitOne(5000, $false)
-
-        if ($wait -and !$connection.Client.Connected) {
-            $connection.Close()
-            $connectionTest = $false
-        } elseif (!$wait) {
-            $connection.Close()
-            $connectionTest = $false
-        } else {
-            $connection.EndConnect($result) | Out-Null
-            $connectionTest = $connection.Connected
-        }
-        
-        if ($connectionTest) {
-            Write-Output "Connection to $uniqueURL on port $port is successful."  
-        } else {
-            Write-Error "Connection to $uniqueURL on port $port failed."  
-        }
-    }
-    catch {
-        Write-Error "Error connecting to $uniqueURL. Please test that the service account has internet access."
-        New-LogEntry "Unable to connect to $uniqueURL."
-    }
-} 
-
-function Test-NDESServiceAccountProperties {
-    param (
-        [string]$NDESServiceAccount
-    )
-
-    Write-StatusMessage "Checking NDES Service Account properties in Active Directory..." 
-    New-LogEntry "Checking NDES Service Account properties in Active Directory" -Severity 1
-
-    $ADAccount = $NDESServiceAccount.split("\")[1]
-    if ($SvcAcctIsComputer) {
-        $ADAccountProps = Get-ADComputer $ADAccount -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut
-    }
-    else {
-        $ADAccountProps = Get-ADUser $ADAccount -Properties SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut
-    }
-
-    if ($ADAccountProps.enabled -ne $true -OR $ADAccountProps.PasswordExpired -ne $false -OR $ADAccountProps.LockedOut -eq $true) {
-        Write-StatusMessage "Error: Problem with the AD account. Please see output below to determine the issue"       
-        New-LogEntry "Problem with the AD account. Please see output below to determine the issue" -Severity 3
-    }
-    else {
-        Write-StatusMessage "Success:`r`nNDES Service Account seems to be in working order:"
-        New-LogEntry "NDES Service Account seems to be in working order" -Severity 1
-    }
-
-    $msg = $ADAccountProps | Format-List SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut
-    $msg
-    New-LogEntry "$msg" -Severity 1
-}
+  
+ 
 
 function Test-NDESServiceAccountLocalPermissions {
-    Write-StatusMessage "Checking NDES Service Account local permissions..." 
-    New-LogEntry  "Checking NDES Service Account local permissions" -Severity 1 
+    Write-StatusMessage "Checking NDES Service Account local permissions..." -Severity 1 
     if ($SvcAcctIsComputer) { 
-        Write-StatusMessage "Skipping NDES Service Account local permissions since local system is used as the service account..." 
-        New-LogEntry  "Skipping NDES Service Account local permissions since local system is used as the service account" -Severity 1 
+        Write-StatusMessage "Skipping NDES Service Account local permissions since local system is used as the service account..." -Severity 1 
     }
     else {
         if ((net localgroup) -match "Administrators"){
@@ -1620,21 +1329,14 @@ function Test-NDESServiceAccountLocalPermissions {
 
             if ($LocalAdminsMember -like "*$NDESServiceAccount*"){
 
-                Write-Warning "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use the IIS_IUSERS local group instead."
-                New-LogEntry  "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use IIS_IUSERS instead."  -Severity 2
-
+                New-LogEntry "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use the IIS_IUSERS local group instead." -Severity 2 
             }
-
             else {
-
-                Write-StatusMessage "Success:`r`nNDES Service account is not a member of the local Administrators group"
-                New-LogEntry  "NDES Service account is not a member of the local Administrators group"  -Severity 1    
+                New-LogEntry "Success:`r`nNDES Service account is not a member of the local Administrators group" -Severity 1    
             }
         }
-           else {
-
-        Write-Warning "No local Administrators group exists, likely due to this being a Domain Controller or renaming the group. It is not recommended to run NDES on a Domain Controller."
-        New-LogEntry  "No local Administrators group exists, likely due to this being a Domain Controller or renaming the group. It is not recommended to run NDES on a Domain Controller." -Severity 2
+           else { 
+                New-LogEntry "No local Administrators group exists, likely due to this being a Domain Controller or renaming the group. It is not recommended to run NDES on a Domain Controller." -Severity 2
     
         }
 
@@ -1642,25 +1344,21 @@ function Test-NDESServiceAccountLocalPermissions {
 } 
  
 Function Test-IIS_IUSR_Membership {
-    Write-StatusMessage "Checking NDES Service account is a member of the IIS_IUSR group..." 
+    Write-StatusMessage "Checking if the NDES service account is a member of the IIS_IUSR group..." -Severity 1
     if ((net localgroup) -match "IIS_IUSRS"){
 
         $IIS_IUSRMembers = ((net localgroup IIS_IUSRS))
 
         if ($IIS_IUSRMembers -like "*$NDESServiceAccount*"){
-
-            Write-StatusMessage "Success:`r`nNDES service account is a member of the local IIS_IUSR group"
-            New-LogEntry  "NDES service account is a member of the local IIS_IUSR group" -Severity 1    
+            New-LogEntry "NDES service account is a member of the local IIS_IUSR group" -Severity 1    
         }
 
         else {
+ 
+            New-LogEntry "Error: NDES Service Account is not a member of the local IIS_IUSR group" -Severity 3 
 
-            Write-Output "Error: NDES Service Account is not a member of the local IIS_IUSR group" 
-            New-LogEntry  "NDES Service Account is not a member of the local IIS_IUSR group"  -Severity 3 
-
-            Write-Output ""
-            Write-Output "Checking Local Security Policy for explicit rights via gpedit..." 
-            Write-Output ""
+            Write-StatusMessage "Checking Local Security Policy for explicit rights via gpedit..." -Severity 1
+             
             $TempFile = [System.IO.Path]::GetTempFileName()
             & "secedit" "/export" "/cfg" "$TempFile" | Out-Null
             $LocalSecPol = Get-Content $TempFile
@@ -1673,45 +1371,39 @@ Function Test-IIS_IUSR_Membership {
 
                 if ($LocalSecPolResults -match "SeInteractiveLogonRight" -and $LocalSecPolResults -match "SeBatchLogonRight" -and $LocalSecPolResults -match "SeServiceLogonRight"){
             
-                    Write-Output "Success: " 
-                    Write-Output "NDES Service Account has been assigned the Logon Locally, Logon as a Service and Logon as a batch job rights explicitly."
-                    New-LogEntry  "NDES Service Account has been assigned the Logon Locally, Logon as a Service and Logon as a batch job rights explicitly." -Severity 1
-                    Write-Output ""
-                    Write-Output "Note:" 
-                    Write-Output " The Logon Locally is not required in normal runtime."
-                    Write-Output ""
-                    Write-Output "Note:" 
-                    Write-Output 'Consider using the IIS_IUSERS group instead of explicit rights as documented under "Step 1 - Create an NDES service account".'
-                    Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-            
+                    New-LogEntry @"                    
+                        Success: 
+                        NDES Service Account has been assigned 'Logon Locally', 'Logon as a Service' and 'Logon as a batch job' rights explicitly.
+
+                        Note:
+                        Consider using the IIS_IUSERS group instead of explicit rights as described in this article:
+                        https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
+"@ -Severity 1
+
                 }
             
                 else {
-
-                    Write-Output "Error: NDES Service Account has _NOT_ been assigned the Logon Locally, Logon as a Service or Logon as a batch job rights _explicitly_."  
-                    Write-Output 'Please review "Step 1 - Create an NDES service account".' 
-                    Write-Output "https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-                    New-LogEntry  "NDES Service Account has _NOT_ been assigned the Logon Locally, Logon as a Service or Logon as a batch job rights _explicitly_." -Severity 3
-            
+                    New-LogEntry "NDES Service Account has _NOT_ been assigned the Logon Locally, Logon as a Service or Logon as a batch job rights _explicitly." -Severity 3        
                 }
-
-        }
+             }
 
     }
 
     else {
+   
+        New-LogEntry @"
+                        No IIS_IUSRS group exists. Ensure IIS is installed.
 
-        Write-Output "Error: No IIS_IUSRS group exists. Ensure IIS is installed."  
-        Write-Output 'Please review "Step 3.1 - Configure prerequisites on the NDES server".' 
-        Write-Output "https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-        New-LogEntry  "No IIS_IUSRS group exists. Ensure IIS is installed." -Severity 3
+                        Please review the following article for more information:
+                            https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
+"@ -Severity 3
 
     }
 
 }
  
 Function Test-PFXCertificateConnectorService {
-    Write-Output "Checking the `"Log on As`" for PFX Certificate Connector for Intune"  
+    New-LogEntry "Checking the `"Log on As`" for PFX Certificate Connector for Intune" -Severity 1
     $service = Get-Service -Name "PFXCertificateConnectorSvc"
 
     if ($service) {
@@ -1720,14 +1412,14 @@ Function Test-PFXCertificateConnectorService {
 
         # Check if the service is running as Local System or as a specific user
         if ($serviceProcess.StartName -eq "LocalSystem") {
-            Write-Output "$($service.Name) is running as Local System"  
+            New-LogEntry "$($service.Name) is running as Local System" -Severity 1  
         }
         else {
-            Write-Output "$($service.Name) is running as $($serviceProcess.StartName)"  
+            New-LogEntry "$($service.Name) is running as $($serviceProcess.StartName)" -Severity 1  
         }
     } 
     else {
-        Write-Error "PFXCertificateConnectorSvc service not found"  
+        New-LogEntry "PFXCertificateConnectorSvc service not found" -Severity 3  
     }
 
 }
@@ -1738,11 +1430,11 @@ function Compress-LogFiles {
     Write-StatusMessage "Gathering log files..."
     
     if ($PSCmdlet.ParameterSetName -eq "Unattended") {
-        Write-Output "Automatically gathering files."
+        New-LogEntry "Automatically gathering files."
         $LogFileCollectionConfirmation = "y"
     }
     else {
-        Write-Output "Do you want to gather troubleshooting files? This includes IIS, NDES Connector, NDES Plugin, CRP, and MSCEP log files, in addition to the SCEP template configuration.  [Y]es, [N]o:"
+        New-LogEntry "Do you want to gather troubleshooting files? This includes IIS, NDES Connector, NDES Plugin, CRP, and MSCEP log files, in addition to the SCEP template configuration.  [Y]es, [N]o:"
         $LogFileCollectionConfirmation = Read-Host
     }
     
@@ -1785,7 +1477,6 @@ function Compress-LogFiles {
         Copy-Item -Path $ApplicationLogFilePath -Destination $TempDirPath
         Copy-Item -Path $SystemLogFilePath -Destination $TempDirPath
 
-
         $GPresultPath = "$($TempDirPath)\gpresult_temp.html"
         gpresult /h $GPresultPath
 
@@ -1800,10 +1491,11 @@ function Compress-LogFiles {
         Copy-Item $LogFilePath .
         [io.compression.zipfile]::CreateFromDirectory($Script:TempDirPath, "$($Currentlocation)\$($date)-CertConnectorLogs-$($hostname).zip")
 
-        Write-Output ""
-        Write-Output "Success: " 
-        Write-Output "Log files copied to $($Currentlocation)\$($date)-CertConnectorLogs-$($hostname).zip"
-        Write-Output ""
+        New-LogEntry @"
+        Success: Log files copied to $($Currentlocation)\$($date)-CertConnectorLogs-$($hostname).zip"
+
+"@
+
         # Show in Explorer
         Start-Process $Currentlocation
     }
@@ -1818,9 +1510,7 @@ function Format-Log {
     param($logname = $Script:LogFilePath)
 
     $Contents = Get-Content $logname
-    $FormattedContent = ($Contents -replace '("$|,"|",{1,2}")', '  ') -replace '^"', ''
-
- 
+    $FormattedContent = ($Contents -replace '("$|,"|",{1,2}")', '  ') -replace '^"', '' 
     $FormattedContent | Out-File $logname -Encoding utf8 -Force
 }
 
@@ -1830,35 +1520,44 @@ function Format-Log {
 #Requires -RunAsAdministrator 
 ##   #Requires -module ActiveDirectory
 
-# Script Variables
-$parent = [System.IO.Path]::GetTempPath()
+# Script-wide Variables
 [string] $name = [System.Guid]::NewGuid()
-New-Item -ItemType Directory -Path (Join-Path $parent $name) | Out-Null
-$Script:TempDirPath = "$parent$name"
+$Script:TempDirPath = Join-Path $env:temp $name
+New-Item -ItemType Directory -Path $TempDirPath -Force | Out-Null
 $Script:LogFilePath = "$($Script:TempDirPath)\Validate-NDESConfig.log"
 
 # Flag to query computer vs user properties from AD
 [bool]$SvcAcctIsComputer = $false
-$NDESServiceAccount = Get-NDESServiceAcct
 $line = "." * 60
 
-Write-StatusMessage "Starting logging to $logfilepath"
+if ($help){
+    Get-NDESHelp
+    break
+}
+
+if ($usage){
+    Show-Usage
+    break
+} 
  
-Confirm-Variables -NDESServiceAccount $NDESServiceAccount -IssuingCAServerFQDN $IssuingCAServerFQDN -SCEPUserCertTemplate $SCEPUserCertTemplate
+
 
 if ( -not ( Test-IsRSATADInstalled) ){
     Install-RSATAD
 } 
 
 Initialize-LogFile
+if ($NDESServiceAccount -eq "" -or $null -eq $NDESServiceAccount) {
+    $NDESServiceAccount = Get-NDESServiceAcct
+}
 Test-Variables
+Confirm-Variables -NDESServiceAccount $NDESServiceAccount -IssuingCAServerFQDN $IssuingCAServerFQDN -SCEPUserCertTemplate $SCEPUserCertTemplate
 Test-IsNDESInstalled
 Test-IsAADModuleInstalled
 Test-IsIISInstalled
 Test-OSVersion
 Test-IEEnhancedSecurityMode
 Test-NDESServiceAccountProperties -NDESServiceAccount $NDESServiceAccount
-Get-EventLogData
 Test-PFXCertificateConnector
 Test-Connectivity
 Test-InstallRSATTools
@@ -1878,13 +1577,15 @@ Test-WindowsFeaturesInstalled
 Test-NDESServiceAccountLocalPermissions -NDESServiceAccount $NDESServiceAccount
 Test-SPN -ADAccount "NDES_Service_Account"  
 Test-PFXCertificateConnectorService
+Test-IIS_IUSR_Membership
+Test-IIS_Log 
+Test-IEEnhancedSecurityMode 
+Get-EventLogData
 Format-Log
 Compress-LogFiles
 
 #endregion 
-
-
-
+ 
 
 #region Ending script
  
@@ -1892,22 +1593,19 @@ Write-StatusMessage  "End of NDES configuration validation"
  
 if ($WriteLogOutputPath) {
 
-        Write-Output "Log file copied to $($LogFilePath)"
-        Write-Output ""
+        New-LogEntry "Log file copied to $($LogFilePath)" -Severity 1
+
         # for ODC
         $copyPath = "$env:temp\CollectedData\Intune\Files\NDES"
         if ($PSCmdlet.ParameterSetName -eq "Unattended"  ){
             if ( -not (Test-Path $copyPath) ) { mkdir $copyPath -Force }
             Copy-Item $Script:LogFilePath $copyPath
             }
-
-            
-        Write-Output "Ending script..." 
-        Write-Output ""
-
+           
+        Write-StatusMessage "Ending script..." -Severity 1
     }  
  else { 
-    New-LogEntry "Skipping log copy based on command line switches" 1
+    New-LogEntry "Skipping log copy based on command line switches" -Severity 1
  }
 
 #endregion
