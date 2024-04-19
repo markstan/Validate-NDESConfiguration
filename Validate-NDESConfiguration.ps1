@@ -286,7 +286,7 @@ function Get-NDESHelp {
     The NDES server role is required as back-end infrastructure for Intune for delivering VPN and Wi-Fi certificates via the SCEP protocol to mobile devices and desktop clients.
 
     See https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure.
-'@
+'@ -Severity 2
 
     
 } 
@@ -307,13 +307,15 @@ function Confirm-Variables {
     }
     else {
         Write-StatusMessage @"
+
         NDES Service Account      = $NDESServiceAccount
         Issuing CA Server         = $IssuingCAServerFQDN
         SCEP Certificate Template = $SCEPUserCertTemplate
+
         $line
-        Proceed with variables? [Y]es, [N]
-"@
-        $confirmation = Read-Host
+        Proceed with variables?
+"@ -Severity 1
+        $confirmation = Read-Host -Prompt "[Y]es, [N]" 
     }
 
     if ($confirmation -eq 'y') {
@@ -322,7 +324,7 @@ function Confirm-Variables {
         NDESServiceAccount= $NDESServiceAccount
         IssuingCAServer= $IssuingCAServerFQDN
         SCEPCertificateTemplate= $SCEPUserCertTemplate
-"@
+"@ -Severity 1
     }
 }
 
@@ -346,7 +348,6 @@ function Get-NDESServiceAcct {
             if ( (Get-ItemProperty $CARegPath).UseSystemAccount -eq 1) {
                 $NDESServiceAccount = (Get-WmiObject Win32_ComputerSystem).Domain + "`\" + $env:computerName  
                 Set-ServiceAccountisLocalSystem $true
-
             }
             elseif (    (Get-ItemProperty $CARegPath).Username -ne "" ) {
                 $NDESServiceAccount =  (Get-ItemProperty $CARegPath).Username 
@@ -364,9 +365,7 @@ function Get-NDESServiceAcct {
 
 function Test-IsNDESInstalled {
         if (-not (Get-Service PFXCertificateConnectorSvc) ){    
-        New-LogEntry "Error: NDES Not installed" -Severity 3 
-        New-LogEntry "Exiting....................." -Severity 3
-        New-LogEntry "NDES Not installed" -Severity 3
+            New-LogEntry "Error: NDES Not installed.`r`nExiting....................." -Severity 3
         break
     }
 }
@@ -385,7 +384,7 @@ function Install-RSATAD {
  
     New-LogEntry "RSAT-AD-Tools-Feature is not installed. This Windows Feature is required to continue. This is a requirement for AD tests. Install now?" -Severity 2
     $response = Read-Host -Prompt "[y/n]"
-    New-LogEntry "User entered $response"
+    New-LogEntry "Response $response" -Severity 1
 
     if ( ($response).ToLower() -eq "y" ) {
         Install-WindowsFeature RSAT-AD-Tools-Feature | Out-Null
@@ -395,72 +394,56 @@ function Install-RSATAD {
     }
 }
     
-function Test-IsAADModuleInstalled {
-
+function Test-IsAADModuleInstalled { 
     if (Get-Module ActiveDirectory -ListAvailable) {
-        New-LogEntry "ActiveDirectory module is installed." -Severity 1
+        New-LogEntry "Sucess: ActiveDirectory module is installed." -Severity 1
     }
     else {
-        New-LogEntry "ActiveDirectory module is not installed. Please run this command to install it and re-run the script:`r`nInstall-Module ActiveDirectory" -Severity 3 
+        New-LogEntry "Error: ActiveDirectory module is not installed. Please run this command to install it and re-run the script:`r`nInstall-Module ActiveDirectory" -Severity 3 
         break
     }
 
 }
 function Test-IsIISInstalled {
     if (-not (Get-WindowsFeature Web-WebServer).Installed){
-
         $script:IISNotInstalled = $true
         New-LogEntry "IIS is not installed. Some tests will not run as we're unable to import the WebAdministration module" -Severity 2
     }
-
     else {
         $null = Import-Module WebAdministration 
     }
 }
 
 function Test-OSVersion {
-    Write-StatusMessage    "Checking Windows OS version..." 
-  
-    New-LogEntry "Checking OS Version"  1
+    Write-StatusMessage    "Checking Windows OS version..." -Severity 1
 
     $OSVersion = (Get-CimInstance -class Win32_OperatingSystem).Version
     $MinOSVersion = "6.3"
 
-        if ([version]$OSVersion -lt [version]$MinOSVersion){
-        
-            New-LogEntry "Error: Unsupported OS Version. NDES requires Windows Server 2012 R2 and above." 
-            New-LogEntry "Unsupported OS Version. NDES requires Windows Server 2012 R2 and above." -Severity 3
-            
+        if ([version]$OSVersion -lt [version]$MinOSVersion){         
+            New-LogEntry "Error: Unsupported OS Version. NDES requires Windows Server 2012 R2 and above." -Severity 3            
             } 
-        
-        else {
-        
-            New-LogEntry "Success: " 
-            New-LogEntry "OS Version: $OSVersion is supported."
-            New-LogEntry "Server is version $($OSVersion)" -Severity 1
-        
+        else {        
+            New-LogEntry "Success: OS Version $OSVersion is supported."  -Severity 1        
         }
 }
 
 function Test-IEEnhancedSecurityMode {
     #   Checking if IE Enhanced Security Configuration is Deactivated
-    Write-StatusMessage "Checking Internet Explorer Enhanced Security Configuration settings"  
- 
+    Write-StatusMessage "Checking Internet Explorer Enhanced Security Configuration settings"  -Severity 1 
 
     # Check for the current state of Enhanced  Security Configuration; 0 = not configured
     $escState = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}"
  
-    if ($escState.IsInstalled -eq 0) {
-        New-LogEntry "Enhanced Security Configuration is not configured."  
-        New-LogEntry "Enhanced Security Configuration is not configured." -Severity 1
-    } else {
-        New-LogEntry "Enhanced Security Configuration is configured." -Severity 3  
-        New-LogEntry "Enhanced Security Configuration is configured." -Severity 3
+    if ($escState.IsInstalled -eq 0) { 
+        New-LogEntry "Success: Enhanced Security Configuration is not configured." -Severity 1
+    } else { 
+        New-LogEntry "Error: Enhanced Security Configuration is configured." -Severity 3
     }
 }
 
 function Test-PFXCertificateConnector {
-    New-LogEntry "Checking the `"Log on As`" for PFX Certificate Connector for Intune"  
+    Write-StatusMessage "Checking the `"Log on As`" for PFX Certificate Connector for Intune"  -Severity 1
     $service = Get-Service -Name "PFXCertificateConnectorSvc"
 
     if ($service) {
@@ -527,8 +510,7 @@ function Test-WindowsFeaturesInstalled {
         [string]$LogFilePath
     )
 
-    Write-StatusMessage "Checking Windows Features are installed..." 
-    New-LogEntry "Checking Windows Features are installed..." -Severity 1  
+    Write-StatusMessage "Checking Windows Features are installed..." -Severity 1  
 
     $WindowsFeatures = @("Web-Filtering","Web-Net-Ext45","NET-Framework-45-Core","NET-WCF-HTTP-Activation45","Web-Metabase","Web-WMI")
 
@@ -546,43 +528,34 @@ function Test-WindowsFeaturesInstalled {
 } 
 
 function Test-IISApplicationPoolHealth {
-    Write-StatusMessage "Checking IIS Application Pool health..."  
-    New-LogEntry "Checking IIS Application Pool health" -Severity 1
+    Write-StatusMessage "Checking IIS Application Pool health..." -Severity 1
     
         if (-not ($IISNotInstalled -eq $true)){
     
             # If SCEP AppPool Exists    
             if (Test-Path 'IIS:\AppPools\SCEP'){
     
-            $IISSCEPAppPoolAccount = Get-Item 'IIS:\AppPools\SCEP' | Select-Object -expandproperty processmodel | Select-Object -Expand username
+                $IISSCEPAppPoolAccount = Get-Item 'IIS:\AppPools\SCEP' | Select-Object -expandproperty processmodel | Select-Object -Expand username
                 
-                if ((Get-WebAppPoolState "SCEP").value -match "Started"){            
+                if ( (Get-WebAppPoolState "SCEP").value -match "Started" ){            
                     $SCEPAppPoolRunning = $true            
                 }
-            }
-    
-            else {
-    
+            }    
+            else {    
                 New-LogEntry @"
                 Error: SCEP Application Pool missing.
                 Please review this document: 
                 URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure 
-"@ -Severity 3
-            
+"@ -Severity 3            
             }
         
-            if ($SvcAcctIsComputer) { 
-                 
-                Write-StatusMessage "Skipping application pool account check since local system is used as the service account" -Severity 1 
+            if ($SvcAcctIsComputer) {                  
+                New-LogEntry "Skipping application pool account check since local system is used as the service axccount" -Severity 2
             }
             else {
-                if ($IISSCEPAppPoolAccount -contains "$NDESServiceAccount"){
-                
-                New-LogEntry "Success: " 
-                New-LogEntry "Application Pool is configured to use "
-                New-LogEntry "$($IISSCEPAppPoolAccount)"
-                New-LogEntry "Application Pool is configured to use $($IISSCEPAppPoolAccount)" -Severity 1
-                
+                if ($IISSCEPAppPoolAccount -contains "$NDESServiceAccount"){                
+                    New-LogEntry "Success: Application Pool is configured to use " -Severity 1 
+                    New-LogEntry "Application Pool is configured to use $($IISSCEPAppPoolAccount)" -Severity 1                
                 }                
                 else {    
                     New-LogEntry @"
@@ -595,15 +568,15 @@ function Test-IISApplicationPoolHealth {
             }
                     
             if ($SCEPAppPoolRunning){                    
-                New-LogEntry "Success:`r`nSCEP Application Pool is Started" -Severity 1                    
+                New-LogEntry "Success: SCEP Application Pool is Started" -Severity 1                    
             }                    
             else {    
-                New-LogEntry "Error: SCEP Application Pool is stopped.`r`nPlease start the SCEP Application Pool via IIS Management Console. You should also review the Application Event log output for errors." -Severity 3                    
+                New-LogEntry "Error: SCEP Application Pool is stopped.`r`n`t`tPlease start the SCEP Application Pool via IIS Management Console. You should also review the Application Event log output for errors." -Severity 3                    
             }    
         }
     
         else {     
-            New-LogEntry "IIS is not installed" -Severity 3     
+            New-LogEntry "Error: IIS is not installed" -Severity 3     
         }
     
 }
@@ -623,7 +596,7 @@ function Test-NDESInstallParameters {
         ($InstallParams.Message -match '-EncryptionProviderName "Microsoft Strong Cryptographic Provider"')) 
     {
 
-        Write-StatusMessage "Success:`r`nCorrect CSP used in install parameters"
+        Write-StatusMessage "Success: Correct CSP used in install parameters"
          
         New-LogEntry $InstallParams.Message
         New-LogEntry "Correct CSP used in install parameters:" -Severity 1
@@ -653,7 +626,7 @@ function Test-HTTPParamsRegKeys {
             New-LogEntry "URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure"
  
         } else {
-            New-LogEntry "Success:`r`nMaxFieldLength set correctly" -Severity 1
+            New-LogEntry "Success: MaxFieldLength set correctly" -Severity 1
         }
 
         if ($MaxRequestBytes -notmatch "65534") {
@@ -662,7 +635,7 @@ function Test-HTTPParamsRegKeys {
             New-LogEntry "URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure'"
  
         } else {
-            New-LogEntry "Success:`r`nMaxRequestBytes set correctly" -Severity 1
+            New-LogEntry "Success: MaxRequestBytes set correctly" -Severity 1
         }
     } else {
         New-LogEntry "IIS is not installed." -Severity 3
@@ -742,7 +715,7 @@ function Test-Certificates {
     
     # Check if EnrollmentAgentOffline certificate is present
     if ($EnrollmentAgentOffline) {
-        New-LogEntry "Success: `r`nEnrollmentAgentOffline certificate is present" -Severity 1
+        New-LogEntry "Success: EnrollmentAgentOffline certificate is present" -Severity 1
     }
     else {
         New-LogEntry @"
@@ -1109,11 +1082,7 @@ function Test-IIS_Log {
 }
 
 function Test-IntuneConnectorRegKeys {
-     
-    New-LogEntry $line
-     
-    New-LogEntry "Checking Intune Connector registry keys are intact" 
-     
+      
     New-LogEntry "Checking Intune Connector registry keys are intact" -Severity 1
     $ErrorActionPreference = "SilentlyContinue"
 
@@ -1236,8 +1205,8 @@ function Test-NDESServiceAccountProperties {
         Write-StatusMessage "Success:`r`nNDES Service Account seems to be in working order:"  -Severity 1
     }
 
-    $msg = $ADAccountProps | Format-List SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut
-    $msg
+    $msg = $ADAccountProps | Format-List SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut | Out-String
+     
     New-LogEntry "$msg" -Severity 1
 } 
 
@@ -1267,7 +1236,7 @@ function Test-Connectivity {
         [int]$port = 443
     )
 
-    Write-StatusMessage "Checking Connectivity to $uniqueURL" 
+    Write-StatusMessage "Checking Connectivity to $uniqueURL" -Severity 1
 
     try {
         $error.Clear()
@@ -1391,7 +1360,7 @@ Function Test-IIS_IUSR_Membership {
 }
  
 Function Test-PFXCertificateConnectorService {
-    New-LogEntry "Checking the `"Log on As`" for PFX Certificate Connector for Intune" -Severity 1
+    Write-StatusMessage "Checking the `"Log on As`" account for the PFX Certificate Connector for Intune" -Severity 1
     $service = Get-Service -Name "PFXCertificateConnectorSvc"
 
     if ($service) {
@@ -1567,7 +1536,6 @@ Test-SPN -ADAccount "NDES_Service_Account"
 Test-PFXCertificateConnectorService
 Test-IIS_IUSR_Membership
 Test-IIS_Log 
-Test-IEEnhancedSecurityMode 
 Get-EventLogData
 Format-Log
 Compress-LogFiles
