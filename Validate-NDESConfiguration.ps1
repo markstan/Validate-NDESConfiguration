@@ -452,10 +452,10 @@ function Test-IEEnhancedSecurityMode {
  
     if ($escState.IsInstalled -eq 0) {
         New-LogEntry "Enhanced Security Configuration is not configured."  
-        New-LogEntry "Enhanced Security Configuration is not configured." -Severity 1
+        
     } else {
-        New-LogEntry "Enhanced Security Configuration is configured." -Severity 3  
-        New-LogEntry "Enhanced Security Configuration is configured." -Severity 3
+        New-LogEntry "Enhanced Security Configuration is configured." 
+        
     }
 }
 
@@ -1567,7 +1567,6 @@ Test-SPN -ADAccount "NDES_Service_Account"
 Test-PFXCertificateConnectorService
 Test-IIS_IUSR_Membership
 Test-IIS_Log 
-Test-IEEnhancedSecurityMode 
 Get-EventLogData
 Format-Log
 Compress-LogFiles
