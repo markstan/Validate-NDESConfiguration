@@ -802,46 +802,61 @@ function Test-Certificates {
 
     $certs = Get-ChildItem cert:\LocalMachine\My\
 
+    #get current time
+    $currentDate = Get-Date
+
     $EnrollmentAgentOffline = $false
     $CEPEncryption = $false
 
     # Loop through all certificates in LocalMachine Store
     foreach ($item in $certs) {
+        
         $Output = ($item.Extensions | Where-Object {$_.oid.FriendlyName -like "**"}).format(0).split(",")
-
-        if ($Output -match "EnrollmentAgentOffline") {
-            $EnrollmentAgentOffline = $true
-        }
+        $expirationDate = $item.NotAfter
+        
+        if (($Output -match "EnrollmentAgentOffline") -and ($expirationDate -gt $currentDate)){
+    
+            $EnrollmentAgentOffline = $TRUE
+            $EnrollmentAgentOfflineNotAfter = $expirationDate
+    
+    }
+      
+        if (($Output -match "CEPEncryption") -and ($expirationDate -gt $currentDate)){
+        
+            $CEPEncryption = $TRUE
+            $CEPEncryptionNotAfter = $expirationDate
             
-        if ($Output -match "CEPEncryption") {
-            $CEPEncryption = $true
         }
     } 
     
     # Check if EnrollmentAgentOffline certificate is present
     if ($EnrollmentAgentOffline) {
         Write-Output "Success: EnrollmentAgentOffline certificate is present"
+        Write-Output "EnrollmentAgentOffline certificate is present and valid till: "
+        Write-Output "$($EnrollmentAgentOfflineNotAfter)"  
         New-LogEntry "EnrollmentAgentOffline certificate is present" -Severity 1
     }
     else {
-        Write-Output "Error: EnrollmentAgentOffline certificate is not present!"
+        Write-Output "Error: EnrollmentAgentOffline certificate is not present or expired !"
         Write-Output "This can occur when an account without Enterprise Admin permissions installs NDES. You may need to remove the NDES role and reinstall with the correct permissions." 
         Write-Output 'Please review "Step 3.1 - Configure prerequisites on the NDES server".' 
         Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-        New-LogEntry "EnrollmentAgentOffline certificate is not present" -Severity 3 
+        New-LogEntry "EnrollmentAgentOffline certificate is not present or expired" -Severity 3 
     }
     
     # Check if CEPEncryption certificate is present
     if ($CEPEncryption) {
-        Write-Output "Success: CEPEncryption certificate is present"
+        Write-Output "Success: CEPEncryption certificate is presentnor expired !"
+        Write-Output "CEPEncryption is present and valid till: " 
+        Write-Output "$($CEPEncryptionNotAfter)" 
         New-LogEntry "CEPEncryption certificate is present" -Severity 1
     }
-    else {
+    else { 
         Write-Output "Error: CEPEncryption certificate is not present!"
         Write-Output "This can occur when an account without Enterprise Admin permissions installs NDES. You may need to remove the NDES role and reinstall with the correct permissions." 
         Write-Output 'Please review "Step 3.1 - Configure prerequisites on the NDES server".' 
         Write-Output "URL: https://docs.microsoft.com/en-us/intune/certificates-scep-configure#configure-your-infrastructure"
-        New-LogEntry "CEPEncryption certificate is not present" -Severity 3
+        New-LogEntry "CEPEncryption certificate is not present or expired" -Severity 3
     }
 
     # Set ErrorActionPreference back to Continue
