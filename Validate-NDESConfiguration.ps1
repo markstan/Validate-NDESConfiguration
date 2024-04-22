@@ -552,29 +552,6 @@ function Test-Connectivity {
     # function code here
 }
  
-function Test-Variables {
-    if ($PSCmdlet.ParameterSetName -eq "Unattended") {
-        $MscepRaEku = '1.3.6.1.4.1.311.20.2.1' # CEP Encryption
-        # Get cert authority from the Certificate Request Agent cert.
-        $IssuingCAServerFQDN = Get-Item 'Cert:\LocalMachine\My\*' | Where-Object { ($_.EnhancedKeyUsageList -match $MscepRaEku) -and ($_.Extensions.Format(1)[0].split('(')[0] -replace "template=" -match "CEPEncryption" ) }
-         
-        $SCEPUserCertTemplate = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Cryptography\MSCEP).EncryptionTemplate
-       
-    }
-    else {
-        Write-StatusMessage @"
-        NDES Service Account      = $($NDESServiceAccount)          
-        Issuing CA Server         = $($IssuingCAServerFQDN)
-        SCEP Certificate Template = $($SCEPUserCertTemplate)        
-        $line
-        
-        Proceed with variables? [Y]es, [N]
-"@
-        $confirmation = Read-Host
-        $confirmation
-    }
-}
-
 function Initialize-LogFile {
       
     Write-StatusMessage @"
@@ -1453,6 +1430,7 @@ function Compress-LogFiles {
         Get-ItemProperty -Path $registryPath | Out-File -FilePath $outputFilePath -Force
         Get-ChildItem -Path $registryPath | Out-File -FilePath $outputFilePath -Append -Force
         
+        $SCEPUserCertTemplate = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Cryptography\MSCEP).EncryptionTemplate
         $SCEPUserCertTemplateOutputFilePath = "$($TempDirPath)\SCEPUserCertTemplate.txt"
         certutil -v -template $SCEPUserCertTemplate > $SCEPUserCertTemplateOutputFilePath
 
@@ -1831,7 +1809,9 @@ $ResultBlob += Test-NDESServiceAccountLocalPermissions -NDESServiceAccount $NDES
 $ResultBlob += Test-SPN -ADAccount $NDESServiceAccount
 $ResultBlob += Test-PFXCertificateConnectorService
 $ResultBlob += Test-IIS_IUSR_Membership
-$ResultBlob += Test-IIS_Log 
+$ResultBlob += Test-IIS_Log
+$ResultBlob += Get-TCAInfo
+$ResultBlob += Get-IntuneServices 
 
 if ($isadmin) {Get-EventLogData
 } else { New-LogEntry -Message "Unable to gather evtx logs as non-admin. Please run script elevated to collect."}
