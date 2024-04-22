@@ -1,4 +1,5 @@
 *.log
 !Validate*.ps1
 *.evtx
-
+.otherscriptsback
+.vscode

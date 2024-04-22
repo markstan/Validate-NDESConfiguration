@@ -75,9 +75,9 @@ Param(
       Displays results of tests and progress messages to the
    PowerShell window. Color-codes results for ease of reading.
 .EXAMPLE
-   Write-Interactive -ResultBlob $ResultBlob
+   Write-Interactive -ResultBlob $Script:ResultBlob
 .EXAMPLE
-   $ResultBlob | Write-Interactive
+   $Script:ResultBlob | Write-Interactive
 .EXAMPLE
     # Will write in default white text with a severity of 'Information'
     Write-Interactive "hi"
@@ -105,7 +105,7 @@ function Write-Interactive
     Process
     {
 
-    switch ($($ResultBlob.GetType()).FullName) {
+    switch ($($Script:ResultBlob.GetType()).FullName) {
         System.Management.Automation.PSCustomObject
         {
 
@@ -122,7 +122,7 @@ function Write-Interactive
                 }
                 "Failed"
                 { 
-                    Write-Host $ResultBlob.CheckResult -ForegroundColor Red  
+                    Write-Host $ResultBlob.CheckResult -ForegroundColor Magenta # Red  
                 }
                 "Warning"
                 { 
@@ -320,11 +320,14 @@ function Confirm-Variables {
 
     if ($confirmation -eq 'y') {
  
-        Write-StatusMessage  @" 
+        Write-StatusMessage @" 
         NDESServiceAccount= $NDESServiceAccount
-        IssuingCAServer= $IssuingCAServerFQDN
+        IssuingCAServer=`r`n$IssuingCAServerFQDN
         SCEPCertificateTemplate= $SCEPUserCertTemplate
 "@ -Severity 1
+    }
+    else {
+        break
     }
 }
 
@@ -356,62 +359,86 @@ function Get-NDESServiceAcct {
         else {
             New-LogEntry "No certificate found in $CARegPath. Please resolve this issue and run the script again." -Severity 3
 
-            break
         }
  
     New-LogEntry "Service Account detected = $NDESServiceAccount" -Severity 1 
-    [string]$NDESServiceAccount
+    $NDESServiceAccount
 }
 
 function Test-IsNDESInstalled {
-        if (-not (Get-Service PFXCertificateConnectorSvc) ){    
+    Write-StatusMessage "Checking to see that NDES is installed" -Severity 1
+        if ( Get-Service PFXCertificateConnectorSvc) {    
+            $ruleResult = New-TestResult  -Result "Passed" -MoreInformation "NDES is installed."
+        }
+        else {
+            $ruleResult = New-TestResult   -Result "Failed" -MoreInformation "NDES is not installed. Cannot find PFXCertificateConnectorSvc service."
             New-LogEntry "Error: NDES Not installed.`r`nExiting....................." -Severity 3
-        break
-    }
+        }
+             
+    $ruleResult
+
 }
 
 function Test-IsRSATADInstalled {
 
     [bool]$isRSATADInstalled = $false
 
-    if ( (Get-WindowsOptionalFeature -Online -FeatureName  RSAT-AD-Tools-Feature).State -eq "Enabled") {
-        $isRSATADInstalled = $true
+    if ($isadmin) {
+        if ( (Get-WindowsOptionalFeature -Online -FeatureName  RSAT-AD-Tools-Feature).State -eq "Enabled") {
+            $isRSATADInstalled = $true
+        }
     }
+    else {
+          New-LogEntry "$skipInstall" -Severity 2
+    }
+
     $isRSATADInstalled
 }
 
 function Install-RSATAD {
  
-    New-LogEntry "RSAT-AD-Tools-Feature is not installed. This Windows Feature is required to continue. This is a requirement for AD tests. Install now?" -Severity 2
+    New-LogEntry "The RSAT-AD-Tools Windows feature is not installed. This Windows Feature is required to continue. This is a requirement for AD tests. Install now?" -Severity 2
     $response = Read-Host -Prompt "[y/n]"
     New-LogEntry "Response $response" -Severity 1
 
     if ( ($response).ToLower() -eq "y" ) {
-        Install-WindowsFeature RSAT-AD-Tools-Feature | Out-Null
+        Install-WindowsFeature -Name  RSAT-AD-Tools 
     }
     else { 
-        break
+        New-LogEntry "RSAT-AD-Tools-Feature was not installed successfully. Please try running this command in an elevated PowerShell window:
+        
+        Install-WindowsFeature -Name  RSAT-AD-Tools
+
+        " -Severity 3
     }
 }
     
 function Test-IsAADModuleInstalled { 
-    if (Get-Module ActiveDirectory -ListAvailable) {
-        New-LogEntry "Sucess: ActiveDirectory module is installed." -Severity 1
+    Write-StatusMessage "Testing if Entra ID module is installed."
+
+    if (Get-Module ActiveDirectory -ListAvailable  ) {
+        New-LogEntry "Success: ActiveDirectory module is installed." -Severity 1
+        $ruleResult = New-TestResult  -result Passed -MoreInformation "Entra ID PowerShell module is installed"
     }
     else {
-        New-LogEntry "Error: ActiveDirectory module is not installed. Please run this command to install it and re-run the script:`r`nInstall-Module ActiveDirectory" -Severity 3 
-        break
+        $msg = "Error: ActiveDirectory module is not installed. Please run this command to install it and re-run the script:`r`nInstall-Module ActiveDirectory" 
+        New-LogEntry $msg -Severity 3 
+        $ruleResult = New-TestResult  -result Failed -MoreInformation $msg
     }
 
+    $ruleResult
 }
 function Test-IsIISInstalled {
     if (-not (Get-WindowsFeature Web-WebServer).Installed){
         $script:IISNotInstalled = $true
         New-LogEntry "IIS is not installed. Some tests will not run as we're unable to import the WebAdministration module" -Severity 2
+        $ruleResult = New-TestResult -Result Failed
     }
     else {
         $null = Import-Module WebAdministration 
+        $ruleResult = New-TestResult -Result Passed
     }
+    $ruleResult
 }
 
 function Test-OSVersion {
@@ -421,11 +448,14 @@ function Test-OSVersion {
     $MinOSVersion = "6.3"
 
         if ([version]$OSVersion -lt [version]$MinOSVersion){         
-            New-LogEntry "Error: Unsupported OS Version. NDES requires Windows Server 2012 R2 and above." -Severity 3            
+            New-LogEntry "Error: Unsupported OS Version. NDES requires Windows Server 2012 R2 and above." -Severity 3
+            $ruleResult = New-TestResult -Result Failed         
             } 
         else {        
-            New-LogEntry "Success: OS Version $OSVersion is supported."  -Severity 1        
+            New-LogEntry "Success: OS Version $OSVersion is supported."  -Severity 1    
+            $ruleResult = New-TestResult -Result Passed    
         }
+    $ruleResult
 }
 
 function Test-IEEnhancedSecurityMode {
@@ -437,9 +467,12 @@ function Test-IEEnhancedSecurityMode {
  
     if ($escState.IsInstalled -eq 0) { 
         New-LogEntry "Success: Enhanced Security Configuration is not configured." -Severity 1
+        $ruleResult = New-TestResult -Result Passed 
     } else { 
         New-LogEntry "Error: Enhanced Security Configuration is configured." -Severity 3
+        $ruleResult = New-TestResult -Result Failed 
     }
+    $ruleResult
 }
 
 function Test-PFXCertificateConnector {
@@ -452,13 +485,21 @@ function Test-PFXCertificateConnector {
 
         # Check if the service is running as Local System or as a specific user
         if ($serviceProcess.StartName -eq "LocalSystem") {
-            New-LogEntry "$($service.Name) is running as Local System"  
+            $msg = "$($service.Name) is running as Local System"  
+            New-LogEntry $msg
+            $ruleResult = New-TestResult -Result Information -MoreInformation $msg
         } else {
-            New-LogEntry "$($service.Name) is running as $($serviceProcess.StartName)"  
+            $msg = "$($service.Name) is running as service account$($serviceProcess.StartName)"  
+            New-LogEntry  $msg
+            $ruleResult = New-TestResult -Result Information -MoreInformation $msg
         }
     } else {
-        New-LogEntry "PFXCertificateConnectorSvc service not found" -Severity 3  
+        $msg = "PFXCertificateConnectorSvc service not found"  
+        New-LogEntry $msg -Severity 3
+        $ruleResult = New-TestResult -Result Failed -MoreInformation $msg
+        
     }
+    $ruleResult
 }
  
 function Test-Variables {
@@ -497,12 +538,9 @@ function Initialize-LogFile {
 }
 
 function Test-InstallRSATTools {
-    Test-IsNDESInstalled
-
     if ( -not ( Test-IsRSATADInstalled) ){
         Install-RSATAD
     }
-
 }
 
 function Test-WindowsFeaturesInstalled {
@@ -554,7 +592,6 @@ function Test-IISApplicationPoolHealth {
             }
             else {
                 if ($IISSCEPAppPoolAccount -contains "$NDESServiceAccount"){                
-                    New-LogEntry "Success: Application Pool is configured to use " -Severity 1 
                     New-LogEntry "Application Pool is configured to use $($IISSCEPAppPoolAccount)" -Severity 1                
                 }                
                 else {    
@@ -846,8 +883,7 @@ function Test-ServerCertificate {
     if ($ServerCertObject.EnhancedKeyUsageList -match $serverAuthEKU -and (($ServerCertObject.Subject -match $hostname) -or `
         ($ServerCertObject.DnsNameList -match $hostname)) -and ($ServerCertObject.Issuer -notmatch $ServerCertObject.Subject)) {
 
-        New-LogEntry "Success: "
-        New-LogEntry "Certificate bound in IIS is valid:"
+        New-LogEntry "Success: Certificate bound in IIS is valid:"
          
         New-LogEntry "Subject: "
         New-LogEntry "$($ServerCertObject.Subject)"
@@ -872,28 +908,20 @@ function Test-ServerCertificate {
             $EKUValid = $true
         } else {
             $EKUValid = $false
-
-            New-LogEntry "Correct EKU: "
-            New-LogEntry "$($EKUValid)"
-             
+                  
         }
-
+        New-LogEntry "Correct EKU: $EKUValid"      
         if ($ServerCertObject.Subject -match $hostname) {
             $SubjectValid = $true
         } else {
             $SubjectValid = $false
-
-            New-LogEntry "Correct Subject: "
-            New-LogEntry "$($SubjectValid)"
-             
+                       
         }
-
+        New-LogEntry "Correct Subject: $SubjectValid"  
         if ($SelfSigned -eq $false) {
             Out-Null
         } else {
-            New-LogEntry "Is Self-Signed: "
-            New-LogEntry "$($SelfSigned)"
-             
+            New-LogEntry "Is Self-Signed: $SelfSigned"             
         }
 
         New-LogEntry @"
@@ -991,8 +1019,6 @@ function Test-InternalNdesUrl {
     }
    }
         
-#endregion
-
 function Test-LastBootTime {
       
     Write-StatusMessage "Checking last boot time of the server" -Severity 1
@@ -1271,9 +1297,6 @@ function Test-Connectivity {
     }
 } 
 
-  
- 
-
 function Test-NDESServiceAccountLocalPermissions {
     Write-StatusMessage "Checking NDES Service Account local permissions..." -Severity 1 
     if ($SvcAcctIsComputer) { 
@@ -1380,7 +1403,6 @@ Function Test-PFXCertificateConnectorService {
     }
 
 }
-
 function Compress-LogFiles {
     param ()
 
@@ -1461,7 +1483,6 @@ function Compress-LogFiles {
         $Script:WriteLogOutputPath = $true
     }
 }
-
 function Format-Log {
     <# Remove quotes from CSV #>
     param($logname = $Script:LogFilePath)
@@ -1470,23 +1491,298 @@ function Format-Log {
     $FormattedContent = ($Contents -replace '("$|,"|",{1,2}")', '  ') -replace '^"', '' 
     $FormattedContent | Out-File $logname -Encoding utf8 -Force
 }
+ 
+function Get-CSVInfo {
+    Param ([string]$fileName = "test.csv") 
+    if (Test-Path $fileName) {
+        # Read the CSV file
+        $csvData = Import-Csv $fileName 
+        $Results = @{}
+
+        foreach ($row in $csvData){
+            $Results.add( $row.TestName, @{ "Passed" = $row.Passed; "Failed" = $row.Failed} )
+            }
+        }
+    else {
+        New-LogEntry "File not found: $fileName" -Severity 3    
+        break
+        }
+    $Results
+        
+}
+
+
+function New-HTMLReport {
+   
+    <#
+  .SYNOPSIS
+   Generates HTML report
+  .DESCRIPTION
+   Creates HTML output based on rule results
+  .EXAMPLE
+  New-HTMLReport 
+   
+  .NOTES
+  NAME: New-HTMLReport 
+  #>
+  
+    Param () 
+    
+    $head = @'
+  <style>
+  body { background-color:#ffffff;
+         font-family:Tahoma;
+         font-size:12pt; }
+  table {
+    border-spacing: 0;
+    width: 100%;
+    border: 1px solid #ddd;
+    margin: auto;
+  }
+  th {
+    background-color: #6495ED;
+    cursor: pointer;
+  }
+  th, td {
+    border: 1px solid #ddd;
+    text-align: left;
+    padding: 10px;
+  }
+  td.green { color: green; }
+  td.orange { color: orange; }
+  td.red { color: red; }
+  .active { 
+    color: #efefef;
+    font-style: italic;
+  }
+  .filterList {
+    border: 1px solid #ddd;
+    display: inline-block;
+    margin: 4px 0px;
+    padding: 8px;
+  }
+  .filterList h4 {
+    margin: 0px 2px;
+  }
+  </style>
+'@
+  
+$preContent = @'
+  <h1>NDES Validation Results</h1>
+   
+'@
+  
+$script = @'
+  <script>
+  window.onload = function() {
+    if (document.querySelectorAll('tr th').length != 0) {
+      const headings = document.querySelectorAll('tr th');
+      const col = Array.from(headings).find(hd => hd.innerHTML === "Test Result");
+      const inx = Array.from(col.parentNode.children).indexOf(col);
+      const cells = col.closest('table').querySelectorAll(`td:nth-child(${inx+1})`);
+    }
+    
+  
+      Array.from(cells).map((td) => {
+          switch (td.innerHTML) {
+              case "Passed":
+                  td.classList.add("green")
+                  break
+              case "Warning":
+                  td.classList.add("orange")
+                  break
+              case "Failed":
+                  td.classList.add("red")
+                  break
+          }
+      })
+      
+      Array.from(headings).map((hd) => {
+        hd.addEventListener('click', (e) => {
+          sortTable(e.target.cellIndex)
+          activeColumn(e)
+        })
+      })
+       
+  }
+  
+  function activeColumn(e) {
+    const headings = document.querySelectorAll('tr th')
+    const col = Array.from(headings).map(hd => hd.classList.remove('active'))
+    e.target.classList.add('active')
+  }
+  
+  function sortTable(n) {
+    var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+    table = document.querySelector('table')
+    switching = true;
+    //Set the sorting direction to ascending:
+    dir = "asc"; 
+    /*Make a loop that will continue until
+    no switching has been done:*/
+    while (switching) {
+      //start by saying: no switching is done:
+      switching = false;
+      rows = table.rows;
+      /*Loop through all table rows (except the
+      first, which contains table headers):*/
+      for (i = 1; i < (rows.length - 1); i++) {
+        //start by saying there should be no switching:
+        shouldSwitch = false;
+        /*Get the two elements you want to compare,
+        one from current row and one from the next:*/
+        x = rows[i].getElementsByTagName("TD")[n];
+        y = rows[i + 1].getElementsByTagName("TD")[n];
+        /*check if the two rows should switch place,
+        based on the direction, asc or desc:*/
+        if (dir == "asc") {
+          if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) {
+            //if so, mark as a switch and break the loop:
+            shouldSwitch= true;
+            break;
+          }
+        } else if (dir == "desc") {
+          if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) {
+            //if so, mark as a switch and break the loop:
+            shouldSwitch = true;
+            break;
+          }
+        }
+      }
+      if (shouldSwitch) {
+        /*If a switch has been marked, make the switch
+        and mark that a switch has been done:*/
+        rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+        switching = true;
+        //Each time a switch is done, increase this count by 1:
+        switchcount ++;      
+      } else {
+        /*If no switching has been done AND the direction is "asc",
+        set the direction to "desc" and run the while loop again.*/
+        if (switchcount == 0 && dir == "asc") {
+          dir = "desc";
+          switching = true;
+        }
+      }
+    }
+  }
+  
+  function filterTable() {
+  
+    const checkboxes = document.querySelectorAll('input[name="filter"]:checked')
+    const table = document.querySelector('table')
+    const headings = table.querySelectorAll('tr th')
+    const col = Array.from(headings).find(hd => hd.innerHTML === "Test Result")
+    const inx = Array.from(col.parentNode.children).indexOf(col)
+    const trs = table.querySelectorAll('tr')
+  
+    const filters = Array.from(checkboxes).map(chbx => chbx.value )
+  
+    if (filters.length === 0) {
+      resetTableRows(trs)
+    }
+    else {
+      Array.from(trs).map((tr) => {
+        let td = tr.querySelectorAll('td')[inx]
+        if (td) {
+          if (filters.includes(td.innerHTML.toLowerCase())) {
+            // display row
+            tr.style.display = ""
+          }
+          else {
+            // hide row
+            tr.style.display = "none"
+          }
+        }
+      })
+    }
+  
+  }
+  
+  function resetTableRows(trs) {
+    // reset rows for all to display
+    Array.from(trs).map((tr) => {
+      tr.style.display = ""
+    })
+  }
+  </script>
+'@
+    $html = $ResultBlob | ConvertTo-Html -Head $head -Body $script -PreContent $preContent
+    $now = (Get-Date).ToString("ddMMyyyyhhmmss")
+    $HTMLFileName = Join-Path $env:temp "FirewallRuleTests-$now.html"
+    $html | Out-File -FilePath $HTMLFileName -Force
+    $HTMLFileName
+  
+  }
+function New-TestResult {
+
+    <#
+    .SYNOPSIS
+    Helper function to return a formatted rule output object
+    .DESCRIPTION
+    Returns a rule result object for reporting
+    .EXAMPLE
+    New-TestResult
+
+    .NOTES
+    NAME: New-TestResult
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]$TestName = $(Get-PSCallStack)[0].Command, 
+        [ValidateSet("Passed", "Warning", "Failed", "Information")]
+        [string]$Result = "Information", 
+        [string]$MoreInformation = "" 
+    )
+
+
+    $TestResult = [PSCustomObject] [Ordered] @{ 
+        'Test Name'          = $TestName
+        'Test Result'        = $Result     
+        'More information'   = $MoreInformation
+    }
+ 
+ 
+    $TestResult
+}
+
+Function Test-IsAdmin
+{
+    ([Security.Principal.WindowsPrincipal] `
+      [Security.Principal.WindowsIdentity]::GetCurrent() `
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+
+
+#endregion
+
 
 #  Script requirements
 
 #Requires -version 3.0
-#Requires -RunAsAdministrator 
+# y#Requires -RunAsAdministrator 
 ##   #Requires -module ActiveDirectory
 
 # Script-wide Variables
 [string] $name = [System.Guid]::NewGuid()
 $Script:TempDirPath = Join-Path $env:temp $name
 New-Item -ItemType Directory -Path $TempDirPath -Force | Out-Null
-$Script:LogFilePath = "$($Script:TempDirPath)\Validate-NDESConfig.log"
+[string]$Script:LogFilePath = "$($Script:TempDirPath)\Validate-NDESConfig.log"
+[PSCustomObject[]]$ResultBlob = @()
+[bool]$isadmin = Test-IsAdmin
 
 # Flag to query computer vs user properties from AD
 [bool]$SvcAcctIsComputer = $false
 $line = "." * 60
+# common messages
+[string]$skipInstall = "Skipping installation. Please re-run the script in an elevated PowerShell window."
 
+Initialize-LogFile
+$ResultsText = ".\ResultMessages.csv" | Import-Csv
+$ResultsText
 if ($help){
     Get-NDESHelp
     break
@@ -1497,49 +1793,78 @@ if ($usage){
     break
 } 
  
+if ( Test-IsRSATADInstalled) {
+    $mi = "RSAT AD tools are installed."
+    $ResultBlob += New-TestResult -TestName "Test-ISRSATInstalled"  -Result "Passed" -MoreInformation $mi
+}
+else {
+    if ($isadmin) {
+        Install-RSATAD
+    }
+    else {
+            $ResultBlob += New-TestResult -TestName "Test-ISRSATInstalled" -Result "Warning" -MoreInformation "Unable to install RSAT AD tools. Please install from an elevated PowerShell window and then run this script again."
+            }
+    }
 
-
-if ( -not ( Test-IsRSATADInstalled) ){
-    Install-RSATAD
-} 
-
-Initialize-LogFile
 if ($NDESServiceAccount -eq "" -or $null -eq $NDESServiceAccount) {
     $NDESServiceAccount = Get-NDESServiceAcct
 }
-Test-Variables
+#Test-Variables
 Confirm-Variables -NDESServiceAccount $NDESServiceAccount -IssuingCAServerFQDN $IssuingCAServerFQDN -SCEPUserCertTemplate $SCEPUserCertTemplate
-Test-IsNDESInstalled
-Test-IsAADModuleInstalled
-Test-IsIISInstalled
-Test-OSVersion
-Test-IEEnhancedSecurityMode
-Test-NDESServiceAccountProperties -NDESServiceAccount $NDESServiceAccount
-Test-PFXCertificateConnector
-Test-Connectivity
-Test-InstallRSATTools
-Test-IISApplicationPoolHealth
-Test-NDESInstallParameters  
-Test-HTTPParamsRegKeys  
-Test-IntermediateCerts  
-Test-TemplateNameRegKey -SCEPUserCertTemplate "YourSCEPCertificateTemplateName"
-Test-Certificates  
-Test-ServerCertificate
-Test-InternalNdesUrl
-Test-LastBootTime
-Test-IntuneConnectorInstall
-Test-IntuneConnectorRegKeys
-Test-ClientCertificate
-Test-WindowsFeaturesInstalled 
-Test-NDESServiceAccountLocalPermissions -NDESServiceAccount $NDESServiceAccount
-Test-SPN -ADAccount "NDES_Service_Account"  
-Test-PFXCertificateConnectorService
-Test-IIS_IUSR_Membership
-Test-IIS_Log 
-Get-EventLogData
+
+$ResultsText = Get-CSVInfo -fileName ".\ResultMessages.csv"
+ 
+
+$ResultBlob += Test-IsNDESInstalled
+$ResultBlob += Test-IsAADModuleInstalled
+$ResultBlob += Test-IsIISInstalled
+$ResultBlob += Test-OSVersion
+$ResultBlob += Test-IEEnhancedSecurityMode
+$ResultBlob += Test-NDESServiceAccountProperties -NDESServiceAccount $NDESServiceAccount
+$ResultBlob += Test-PFXCertificateConnector
+$ResultBlob += Test-Connectivity
+$ResultBlob += Test-InstallRSATTools
+$ResultBlob += Test-IISApplicationPoolHealth
+$ResultBlob += Test-NDESInstallParameters  
+$ResultBlob += Test-HTTPParamsRegKeys  
+$ResultBlob += Test-IntermediateCerts  
+$ResultBlob += Test-TemplateNameRegKey -SCEPUserCertTemplate "YourSCEPCertificateTemplateName"
+$ResultBlob += Test-Certificates  
+$ResultBlob += Test-ServerCertificate
+$ResultBlob += Test-InternalNdesUrl
+$ResultBlob += Test-LastBootTime
+$ResultBlob += Test-IntuneConnectorInstall
+$ResultBlob += Test-IntuneConnectorRegKeys
+$ResultBlob += Test-ClientCertificate
+$ResultBlob += Test-WindowsFeaturesInstalled 
+$ResultBlob += Test-NDESServiceAccountLocalPermissions -NDESServiceAccount $NDESServiceAccount
+$ResultBlob += Test-SPN -ADAccount "NDES_Service_Account"  
+$ResultBlob += Test-PFXCertificateConnectorService
+$ResultBlob += Test-IIS_IUSR_Membership
+$ResultBlob += Test-IIS_Log 
+if ($isadmin) {Get-EventLogData } else { New-LogEntry -Message "Unable to gather evtx logs as non-admin. Please run script elevated to collect."}
 Format-Log
 Compress-LogFiles
+  
+foreach ($entry in $ResultBlob) {
+     if ( $entry.'More Information' -eq "" ) { 
+        switch ($entry.'Test Result'){
+            'Passed' { $entry.'More Information'=  $ResultsText[$entry.'Test Name'].Passed} 
+            'Failed' { $entry.'More Information'=  $ResultsText[$entry.'Test Name'].Failed} 
+            'Warning' { $entry.'More Information'=  $ResultsText[$entry.'Test Name'].Warning} 
+            'Information' { $entry.'More Information'=  $ResultsText[$entry.'Test Name'].Information} 
 
+        }
+    }
+} 
+$HTMLFileName = New-HTMLReport -resultBlob $ResultBlob
+$ResultBlob | Out-File -FilePath .\Validate-NDESConfig-Testresults.txt -Encoding utf8 -Force -Width 1000
+start .\Validate-NDESConfiguration-TestResults.txt
+
+if (Test-Path $HTMLFileName){
+    Start-Process $HTMLFileName
+}
+ 
 #endregion 
  
 
