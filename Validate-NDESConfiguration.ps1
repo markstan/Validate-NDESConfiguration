@@ -1211,62 +1211,6 @@ function Test-IIS_Log {
     }
 }
 
-function Test-IntuneConnectorRegKeys {
-      
-    New-LogEntry "Checking Intune Connector registry keys are intact" -Severity 1
-    $ErrorActionPreference = "SilentlyContinue"
-
-    $KeyRecoveryAgentCertificate = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\MicrosoftIntune\NDESConnector\KeyRecoveryAgentCertificate"
-    $PfxSigningCertificate = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\MicrosoftIntune\NDESConnector\PfxSigningCertificate"
-    $SigningCertificate = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\MicrosoftIntune\NDESConnector\SigningCertificate"
-
-    if (-not (Test-Path $KeyRecoveryAgentCertificate)) {
-        New-LogEntry "Error: KeyRecoveryAgentCertificate Registry key does not exist." 
-         
-        New-LogEntry "KeyRecoveryAgentCertificate Registry key does not exist." -Severity 3 
-    }
-    else {
-        $KeyRecoveryAgentCertificatePresent = (Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\NDESConnector\ -Name KeyRecoveryAgentCertificate).KeyRecoveryAgentCertificate
-
-        if (-not ($KeyRecoveryAgentCertificatePresent)) {
-            New-LogEntry "KeyRecoveryAgentCertificate registry key exists but has no value" -Severity 2 
-        }
-        else {
-            New-LogEntry "Success: `r`nKeyRecoveryAgentCertificate registry key exists" -Severity 1
-        }
-    }
-
-    if (-not (Test-Path $PfxSigningCertificate)) { 
-        New-LogEntry "PfxSigningCertificate Registry key does not exist." -Severity 3 
-    }
-    else {
-        $PfxSigningCertificatePresent = (Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\NDESConnector\ -Name PfxSigningCertificate).PfxSigningCertificate
-
-        if (-not ($PfxSigningCertificatePresent)) {
-            New-LogEntry "PfxSigningCertificate registry key exists but has no value" -Severity 2 
-        }
-        else {
-            New-LogEntry "Success: `r`nPfxSigningCertificate registry key exists" -Severity 1
-        }
-    }
-
-    if (-not (Test-Path $SigningCertificate)) { 
-        New-LogEntry "SigningCertificate Registry key does not exist" -Severity 3  
-    }
-    else {
-        $SigningCertificatePresent = (Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\NDESConnector\ -Name SigningCertificate).SigningCertificate
-
-        if (-not ($SigningCertificatePresent)) {
-            New-LogEntry "SigningCertificate registry key exists but has no value" -Severity 2
-        }
-        else {
-            New-LogEntry "Success: SigningCertificate registry key exists" -Severity 1
-        }
-    }
-
-    $ErrorActionPreference = "Continue"
-}
-
 function Get-EventLogData {
     param (
         [int]$EventLogCollDays = 5
