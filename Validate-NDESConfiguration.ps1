@@ -502,6 +502,95 @@ function Test-PFXCertificateConnector {
         
     }
     $ruleResult
+} 
+
+function Get-TCAInfo {
+    # Fetching the Template Info that is published in CA
+    Write-StatusMessage "Checking the published templates"
+    
+
+    try {
+        # Execute certutil -TCAInfo command
+        $output = certutil.exe -TCAInfo
+        if ($output) {
+            Write-Output $output
+	    New-LogEntry "TCAInfo"
+        } else {
+            Write-Output "cannot fetch the published template details."
+        }
+    } catch {
+        Write-Error "Template Details cannot be fetched_"
+    }
+}
+
+function Get-IntuneServices {
+# Fetching the Services for Intune
+write-StatusMessage "Checking all the intune services" 
+
+# Define the list of services to check
+$services = @(
+    "AzureADConnectAgentUpdater",
+    "PFXCertificateConnectorSvc",
+    "PkiCreateConnectorSvc",
+    "PfxCreateLegacyConnectorSvc",
+    "PkiRevokeConnectorSvc"
+    "PKIConnectorSvc"
+    "WAPCSvc"
+    "WAPCUpdaterSvc"
+)
+
+# Iterate through each service and check its status
+foreach ($service in $services) {
+    $serviceStatus = Get-Service -Name $service -ErrorAction SilentlyContinue
+
+    if ($serviceStatus) {
+        Write-output "$service is $($serviceStatus.Status)"
+        	
+    } else {
+        Write-output "$service not found"
+        
+    }
+}
+}
+
+function Get-ConnectorCertificate {
+#Checking the validity of the Microsoft Intune ImportPFX Connector Certificate"
+Write-StatusMessage "Checking Microsoft Itnne ImportPFX Connector Certificate"
+
+$issuer = "Microsoft Intune ImportPFX Connector CA"
+$certs = Get-ChildItem -Path cert:\LocalMachine -Recurse
+$matchingCerts = $certs | Where-Object { $_.Issuer -match $issuer }
+
+
+if ($matchingCerts.Count -gt 0) {
+    if ($matchingCerts.Count -gt 1) {
+        Write-Output "$($matchingCerts.Count) certificates issued by '$issuer' found."
+        
+    }
+    
+    foreach ($cert in $matchingCerts) {
+       
+        $validFromDate = $cert.NotBefore
+        $validToDate = $cert.NotAfter       
+        if ($validToDate -gt (Get-Date)) {
+            Write-output "Certificate is valid from: $($validFromDate) until: $($validToDate)"
+            
+        } else {
+            Write-output "Certificate is expired! Expiration date: $($validToDate)"
+            
+        }
+    }
+} else {
+    Write-Output "No certificate issued by '$issuer' found."
+    
+}
+}
+
+function Test-Connectivity {
+    param(
+        # parameters here
+    )
+    # function code here
 }
  
 function Test-Variables {
@@ -1832,12 +1921,8 @@ if ($NDESServiceAccount -eq "" -or $null -eq $NDESServiceAccount) {
     $NDESServiceAccount = Get-NDESServiceAcct
 }
 #Test-Variables
-Confirm-Variables -NDESServiceAccount $NDESServiceAccount -IssuingCAServerFQDN $IssuingCAServerFQDN -SCEPUserCertTemplate $SCEPUserCertTemplate
-
-
-
-$ResultsText = Get-CSVInfo -fileName ".\ResultMessages.csv"
- 
+Confirm-Variables -NDESServiceAccount $NDESServiceAccount -IssuingCAServerFQDN $IssuingCAServerFQDN -SCEPUserCertTemplate $SCEPUserCertTemplate 
+$ResultsText = Get-CSVInfo -fileName ".\ResultMessages.csv" 
 
 $ResultBlob += Test-IsNDESInstalled
 $ResultBlob += Test-IsAADModuleInstalled
@@ -1866,6 +1951,7 @@ $ResultBlob += Test-SPN -ADAccount "NDES_Service_Account"
 $ResultBlob += Test-PFXCertificateConnectorService
 $ResultBlob += Test-IIS_IUSR_Membership
 $ResultBlob += Test-IIS_Log 
+
 if ($isadmin) {Get-
 } else { New-LogEntry -Message "Unable to gather evtx logs as non-admin. Please run script elevated to collect."}
  
@@ -1885,7 +1971,7 @@ foreach ($entry in $ResultBlob) {
 } 
 $HTMLFileName = New-HTMLReport -resultBlob $ResultBlob
 $ResultBlob | Out-File -FilePath .\Validate-NDESConfig-Testresults.txt -Encoding utf8 -Force -Width 1000
-start .\Validate-NDESConfiguration-TestResults.txt
+
 
 if (Test-Path $HTMLFileName){
     Start-Process $HTMLFileName
