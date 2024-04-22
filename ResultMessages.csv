@@ -1,0 +1,28 @@
+TestName,Passed,Failed
+Test-IsNDESInstalled,NDES is installed.,NDES is not installed.
+Test-IsAADModuleInstalled,Entra ID PowerShell module is installed, Entra ID PowerShell module is not installed
+Test-IsIISInstalled,Test-IsIISInstalled passed,Test-IsIISInstalled failed
+Test-OSVersion,Test-OSVersion passed,Test-OSVersion failed
+Test-IEEnhancedSecurityMode,Test-IEEnhancedSecurityMode passed,Test-IEEnhancedSecurityMode failed
+Test-NDESServiceAccountProperties,Test-NDESServiceAccountProperties passed,Test-NDESServiceAccountProperties failed
+Test-PFXCertificateConnector,Test-PFXCertificateConnector passed,Test-PFXCertificateConnector failed
+Test-Connectivity,Test-Connectivity passed,Test-Connectivity failed
+Test-InstallRSATTools,Test-InstallRSATTools passed,Test-InstallRSATTools failed
+Test-IISApplicationPoolHealth,Test-IISApplicationPoolHealth passed,Test-IISApplicationPoolHealth failed
+Test-NDESInstallParameters  ,Test-NDESInstallParameters   passed,Test-NDESInstallParameters   failed
+Test-HTTPParamsRegKeys  ,Test-HTTPParamsRegKeys   passed,Test-HTTPParamsRegKeys   failed
+Test-IntermediateCerts  ,Test-IntermediateCerts   passed,Test-IntermediateCerts   failed
+Test-TemplateNameRegKey,Test-TemplateNameRegKey passed,Test-TemplateNameRegKey failed
+Test-Certificates  ,Test-Certificates   passed,Test-Certificates   failed
+Test-ServerCertificate,Test-ServerCertificate passed,Test-ServerCertificate failed
+Test-InternalNdesUrl,Test-InternalNdesUrl passed,Test-InternalNdesUrl failed
+Test-LastBootTime,Test-LastBootTime passed,Test-LastBootTime failed
+Test-IntuneConnectorInstall,Test-IntuneConnectorInstall passed,Test-IntuneConnectorInstall failed
+Test-IntuneConnectorRegKeys,Test-IntuneConnectorRegKeys passed,Test-IntuneConnectorRegKeys failed
+Test-ClientCertificate,Test-ClientCertificate passed,Test-ClientCertificate failed
+Test-WindowsFeaturesInstalled ,Test-WindowsFeaturesInstalled  passed,Test-WindowsFeaturesInstalled  failed
+Test-NDESServiceAccountLocalPermissions,Test-NDESServiceAccountLocalPermissions passed,Test-NDESServiceAccountLocalPermissions failed
+Test-SPN,Test-SPN passed,Test-SPN failed
+Test-PFXCertificateConnectorService,Test-PFXCertificateConnectorService passed,Test-PFXCertificateConnectorService failed
+Test-IIS_IUSR_Membership,Test-IIS_IUSR_Membership passed,Test-IIS_IUSR_Membership failed
+Test-IIS_Log ,Test-IIS_Log  passed,Test-IIS_Log  failed

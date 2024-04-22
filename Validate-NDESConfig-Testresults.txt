@@ -1,0 +1,13 @@
+﻿
+Test Name                    Test Result More information                                                                                                  
+---------                    ----------- ----------------                                                                                                  
+Test-ISRSATInstalled         Warning     Unable to install RSAT AD tools. Please install from an elevated PowerShell window and then run this script again.
+Test-IsNDESInstalled         Passed      NDES is installed.                                                                                                
+Test-IsAADModuleInstalled    Passed      Entra ID PowerShell module is installed                                                                           
+Test-IsIISInstalled          Passed      Test-IsIISInstalled passed                                                                                        
+Test-OSVersion               Passed      Test-OSVersion passed                                                                                             
+Test-IEEnhancedSecurityMode  Passed      Test-IEEnhancedSecurityMode passed                                                                                
+Test-PFXCertificateConnector Information PFXCertificateConnectorSvc is running as service accountcontoso\ndessvcacct                                       
+                                                                                                                                                           
+
+
