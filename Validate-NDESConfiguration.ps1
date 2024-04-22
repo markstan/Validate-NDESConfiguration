@@ -1437,13 +1437,15 @@ function Compress-LogFiles {
         $IISLogs = Get-ChildItem $IISLogPath | Sort-Object -Descending -Property LastWriteTime | Select-Object -First 3
         $NDESConnectorLogs = Get-ChildItem "$env:SystemRoot\System32\Winevt\Logs\Microsoft-Intune-CertificateConnectors*"
         $NDESConnectorUpdateAgentLogs = Get-ChildItem "$env:SystemRoot\System32\Winevt\Logs\Microsoft-AzureADConnect-AgentUpdater*"
-
+        
         $ApplicationEventLogFile = Get-WinEvent -ListLog "Application" | Select-Object -ExpandProperty LogFilePath
         $ApplicationLogFilePath = [System.Environment]::ExpandEnvironmentVariables( $ApplicationEventLogFile)
 
         $SystemEventLogFile = Get-WinEvent -ListLog "System" | Select-Object -ExpandProperty LogFilePath
         $SystemLogFilePath = [System.Environment]::ExpandEnvironmentVariables( $SystemEventLogFile)
-    
+        $registryPath = "HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\PFXCertificateConnector"
+
+        
         foreach ($IISLog in $IISLogs) {
             Copy-Item -Path $IISLog.FullName -Destination $TempDirPath
         }
@@ -1474,6 +1476,11 @@ function Compress-LogFiles {
         $GPresultPath = "$($TempDirPath)\gpresult_temp.html"
         gpresult /h $GPresultPath
 
+        #Collect Registry Details
+        $outputFilePath = "$($TempDirPath)\registry.txt"
+        Get-ItemProperty -Path $registryPath | Out-File -FilePath $outputFilePath -Force
+        Get-ChildItem -Path $registryPath | Out-File -FilePath $outputFilePath -Append -Force
+        
         $SCEPUserCertTemplateOutputFilePath = "$($TempDirPath)\SCEPUserCertTemplate.txt"
         certutil -v -template $SCEPUserCertTemplate > $SCEPUserCertTemplateOutputFilePath
 
