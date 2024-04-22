@@ -465,6 +465,7 @@ function Test-IEEnhancedSecurityMode {
     # Check for the current state of Enhanced  Security Configuration; 0 = not configured
     $escState = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{A509B1A7-37EF-4b3f-8CFC-4F3A74704073}"
  
+ 
     if ($escState.IsInstalled -eq 0) { 
         New-LogEntry "Success: Enhanced Security Configuration is not configured." -Severity 1
         $ruleResult = New-TestResult -Result Passed 
@@ -473,6 +474,7 @@ function Test-IEEnhancedSecurityMode {
         $ruleResult = New-TestResult -Result Failed 
     }
     $ruleResult
+ 
 }
 
 function Test-PFXCertificateConnector {
@@ -1812,6 +1814,8 @@ if ($NDESServiceAccount -eq "" -or $null -eq $NDESServiceAccount) {
 #Test-Variables
 Confirm-Variables -NDESServiceAccount $NDESServiceAccount -IssuingCAServerFQDN $IssuingCAServerFQDN -SCEPUserCertTemplate $SCEPUserCertTemplate
 
+
+
 $ResultsText = Get-CSVInfo -fileName ".\ResultMessages.csv"
  
 
@@ -1842,7 +1846,9 @@ $ResultBlob += Test-SPN -ADAccount "NDES_Service_Account"
 $ResultBlob += Test-PFXCertificateConnectorService
 $ResultBlob += Test-IIS_IUSR_Membership
 $ResultBlob += Test-IIS_Log 
-if ($isadmin) {Get-EventLogData } else { New-LogEntry -Message "Unable to gather evtx logs as non-admin. Please run script elevated to collect."}
+if ($isadmin) {Get-
+} else { New-LogEntry -Message "Unable to gather evtx logs as non-admin. Please run script elevated to collect."}
+ 
 Format-Log
 Compress-LogFiles
   
