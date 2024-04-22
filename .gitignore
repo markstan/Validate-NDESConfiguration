@@ -3,3 +3,5 @@
 *.evtx
 .otherscriptsback
 .vscode
+Validate-NDESConfig-Testresults.txt
+Validate-NDESConfiguration-*.html
