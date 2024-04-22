@@ -356,20 +356,31 @@ function Test-IsRSATADInstalled {
 
 function Install-RSATAD {
  
-    New-LogEntry "The RSAT-AD-Tools Windows feature is not installed. This Windows Feature is required to continue. This is a requirement for AD tests. Install now?" -Severity 2
-    $response = Read-Host -Prompt "[y/n]"
-    New-LogEntry "Response $response" -Severity 1
+    if ($isadmin){
+        New-LogEntry "The RSAT-AD-Tools Windows feature is not installed. This Windows Feature is required to continue. This is a requirement for AD tests. Install now?" -Severity 2
+        $response = Read-Host -Prompt "[y/n]"
+        New-LogEntry "Response $response" -Severity 1
 
-    if ( ($response).ToLower() -eq "y" ) {
-        Install-WindowsFeature -Name  RSAT-AD-Tools 
-    }
-    else { 
-        New-LogEntry "RSAT-AD-Tools-Feature was not installed successfully. Please try running this command in an elevated PowerShell window:
-        
-        Install-WindowsFeature -Name  RSAT-AD-Tools
+        if ( ($response).ToLower() -eq "y" ) {
+            Install-WindowsFeature -Name  RSAT-AD-Tools 
+        }
+        else { 
+            $msg = @"
+            RSAT-AD-Tools-Feature was not installed successfully. Please try running this command in an elevated PowerShell window:
+            
+            Install-WindowsFeature -Name  RSAT-AD-Tools
 
-        " -Severity 3
+"@
+            New-LogEntry $msg -Severity 3
+            $ResultsText = New-TestResult -TestName "Test-IsRSATAD-Installed" -Result Failed -MoreInformation $msg
+        }
     }
+    else {
+        $msg = "Please install RSAT-AD-Tools from an elevated PowerShell window by running the command 'Install-WindowsFeature -Name  RSAT-AD-Tools'."
+        New-LogEntry $msg -Severity 2
+        $ResultsText = New-TestResult -TestName "Test-IsRSATAD-Installed" -MoreInformation $msg
+    }
+    $ResultsText  
 }
     
 function Test-IsAADModuleInstalled { 
@@ -450,7 +461,7 @@ function Test-PFXCertificateConnector {
             New-LogEntry $msg
             $ruleResult = New-TestResult -Result Information -MoreInformation $msg
         } else {
-            $msg = "$($service.Name) is running as service account$($serviceProcess.StartName)"  
+            $msg = "$($service.Name) is running as service account $($serviceProcess.StartName)"  
             New-LogEntry  $msg
             $ruleResult = New-TestResult -Result Information -MoreInformation $msg
         }
@@ -472,14 +483,20 @@ function Get-TCAInfo {
         # Execute certutil -TCAInfo command
         $output = certutil.exe -TCAInfo
         if ($output) {
-            Write-Output $output
-	    New-LogEntry "TCAInfo"
+            $msg = "TCAInfo:`r`n $output" 
+            New-LogEntry $msg -Severity 1
+            $ResultsText = New-TestResult -Result Information -MoreInformation "Successfully wrote TCA information to log."
         } else {
-            Write-Output "cannot fetch the published template details."
+            $msg = "Cannot fetch the published template details."              
+            New-LogEntry $msg -Severity 3
+            $ResultsText = New-TestResult -Result Warning -MoreInformation $msg
         }
     } catch {
-        Write-Error "Template Details cannot be fetched_"
+        $msg = "Template Details cannot be fetched."
+        New-LogEntry $msg -Severity 3
+        $ResultsText = New-TestResult -Result Warning -MoreInformation $msg
     }
+    $ResultsText
 }
 
 function Get-IntuneServices {
@@ -839,7 +856,6 @@ function Test-TemplateNameRegKey {
     param ()
 
     Write-StatusMessage "Checking registry 'HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP' has been set with the SCEP certificate template name..."
-    New-LogEntry "Checking registry (HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP) has been set with the SCEP certificate template name" -Severity 1
 
     if (-not (Test-Path HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP)) {
         $msg = @"
@@ -862,7 +878,7 @@ function Test-TemplateNameRegKey {
             Please review this article: 
                 https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
 "@ 
-        New-LogEntry -Severity 3 
+        New-LogEntry $msg -Severity 3 
         $TestResult = New-TestResult  -Result Failed
         }
     $TestResult
@@ -1050,7 +1066,7 @@ function Test-IntuneConnectorInstall {
 
     if ($IntuneConnector = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate | Where-Object {$_.DisplayName -eq "Certificate Connector for Microsoft Intune"}) {
         $installDate = [datetime]::ParseExact($IntuneConnector.InstallDate, 'yyyymmdd', $null).ToString('dd-mm-yyyy')
-        New-LogEntry "Success: $($IntuneConnector.DisplayName) was installed on $installDate and is version $($IntuneConnector.DisplayVersion)"
+        $ResultsText = New-TestResult -Result Passed -MoreInformation "Success: $($IntuneConnector.DisplayName) was installed on $installDate and is version $($IntuneConnector.DisplayVersion)"
          
         New-LogEntry "ConnectorVersion: $IntuneConnector" -Severity 1 
     } else {
@@ -1062,69 +1078,92 @@ function Test-IntuneConnectorInstall {
 "@ -Severity 3
  
     }
+    else{
+        $ResultsText = New-TestResult "Intune Certificate Connector is not installed" -Result Failed
+    }
+    $ResultsText
 }
 
 function Test-IIS_Log {
 
-    # Specify the path to the IIS log files
-    $logPath = Join-Path  (Get-IISSite).LogFile.Directory "W3SVC1"
-    $logObjects = @()
+    if ($isadmin) {
+        # Specify the path to the IIS log files
+        $logPath = Join-Path  (Get-IISSite).LogFile.Directory "W3SVC1"
+        $logObjects = @()
 
-    # Specify the pattern to search for in the log files
-    $logPattern = "*certsrv/mscep/mscep.dll*"
+        # Specify the pattern to search for in the log files
+        $logPattern = "*certsrv/mscep/mscep.dll*"
 
-    # Get the latest log file
-    $logFiles = Get-ChildItem -Path $logPath | Sort-Object LastWriteTime -Descending | Select-Object -First 2
+        # Get the latest log file
+        if (Test-Path $logPath) 
+        {
+            $logFiles = Get-ChildItem -Path $logPath | Sort-Object LastWriteTime -Descending | Select-Object -First 2
 
-    if ($null -ne $logFiles) {
-        
-        foreach ($logFile in $logFiles) {
-        $logContent = Get-Content -Path $logFile.FullName| Where-Object { $_ -like $logPattern }
-
-        foreach ($entry in $logContent) {
-    
-            # Split the log entry into fields
-            $fields = $entry -split "\s+"
+        if ($null -ne $logFiles) {
             
-            # Create an object for the log entry
-            $logObject = [PSCustomObject]@{
-            # Date = get-date $fields[0]
-            # Time = $fields[1]
-                Date = get-date "$($fields[0]) $($fields[1])"
-                SIP = $fields[2]
-                Method = $fields[3]
-                URIStem = $fields[4]
-                URIQuery = $fields[5]
-                SPort = $fields[6]
-                Username = $fields[7]
-                CIP = $fields[8]
-                UserAgent = $fields[9]
-                Referer = $fields[10]
-                StatusCode = $fields[11]
-                SubStatusCode = $fields[12]
-                Win32StatusCode = $fields[13]
-                TimeTaken = $fields[14]
-            }
-            # Add the log object to the array
-            $logObjects += $logObject
-        }
-        # Output the log objects
-        $RecentrequestinIIS = $logObjects | Select-Object -First 9
+            foreach ($logFile in $logFiles) {
+            $logContent = Get-Content -Path $logFile.FullName| Where-Object { $_ -like $logPattern }
 
-        New-LogEntry $RecentrequestinIIS
+            foreach ($entry in $logContent) {
+        
+                # Split the log entry into fields
+                $fields = $entry -split "\s+"
+                
+                # Create an object for the log entry
+                $logObject = [PSCustomObject]@{
+                # Date = get-date $fields[0]
+                # Time = $fields[1]
+                    Date = get-date "$($fields[0]) $($fields[1])"
+                    SIP = $fields[2]
+                    Method = $fields[3]
+                    URIStem = $fields[4]
+                    URIQuery = $fields[5]
+                    SPort = $fields[6]
+                    Username = $fields[7]
+                    CIP = $fields[8]
+                    UserAgent = $fields[9]
+                    Referer = $fields[10]
+                    StatusCode = $fields[11]
+                    SubStatusCode = $fields[12]
+                    Win32StatusCode = $fields[13]
+                    TimeTaken = $fields[14]
+                }
+                # Add the log object to the array
+                $logObjects += $logObject
+            }
+            # Output the log objects
+            $RecentrequestinIIS = $logObjects | Select-Object -First 9
+        }
+
+            if ($RecentrequestinIIS) {
+                New-LogEntry $RecentrequestinIIS 
+                $ResultsText = New-TestResult -Result Passed -MoreInformation $RecentrequestinIIS
+            }
+            } else {
+                $msg = "No log files found in the specified path." 
+                New-LogEntry $msg -Severity 2
+                $ResultsText = New-TestResult -Result Warning -MoreInformation $msg
+            }
+        }
+        else {
+            
+            $msg = "Cannot find path $logPath." 
+            New-LogEntry $msg -Severity 2
+            $ResultsText = New-TestResult -Result Warning -MoreInformation $msg
+        }
     }
-    } else {
-        New-LogEntry "No log files found in the specified path." -Severity 2
+    else {
+        $msg = "Skipping IIS logs. Please re-run this script in an elevated PowerShell window to collect."
+        New-LogEntry $msg -Severity 2
+        $ResultsText = New-TestResult -Result Warning -MoreInformation $msg 
     }
+    $ResultsText
 }
 
 function Get-EventLogData {
     param (
         [int]$EventLogCollDays = 5
     )
-
-    $ErrorActionPreference = "SilentlyContinue"
- 
     Write-StatusMessage "Checking Event logs for relevent errors" -Severity 1
 
     if (-not (Get-EventLog -LogName "Microsoft Intune Connector" -EntryType Error -After (Get-Date).AddDays(-$EventLogCollDays) -ErrorAction SilentlyContinue)) {
@@ -1188,26 +1227,35 @@ function Test-NDESServiceAccountProperties {
     $msg = $ADAccountProps | Format-List SamAccountName,enabled,AccountExpirationDate,accountExpires,accountlockouttime,PasswordExpired,PasswordLastSet,PasswordNeverExpires,LockedOut | Out-String
      
     New-LogEntry "$msg" -Severity 1
+    $ResultsText = New-TestResult -TestName "Test-NDESServiceAccountProperties" -MoreInformation $msg -Result Information
+    write-host $ResultsText
+    $ResultsText
 } 
 
 function Test-NDESServiceAccountLocalPermissions {
     Write-StatusMessage "Checking NDES Service Account local permissions..."   -Severity 1 
 
     if ($SvcAcctIsComputer) { 
-        Write-StatusMessage "Skipping NDES Service Account local permissions since local system is used as the service account..." -Severity 1 
+        Write-StatusMessage "Skipping NDES Service Account local permissions since local system is used as the service account..." -Severity 1
+        $ResultsText = New-TestResult "Skipping NDES Service Account local permissions since local system is used as the service account..." -Result Information
     }
     else {
         if ((net localgroup) -match "Administrators"){
-            $LocalAdminsMember = ((net localgroup Administrators))
+            $LocalAdminsMember = (net localgroup Administrators)
 
             if ($LocalAdminsMember -like "*$NDESServiceAccount*"){
-                New-LogEntry "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use the IIS_IUSERS local group instead." -Severity 2 
+                $msg = "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use the IIS_IUSERS local group instead."
+                $ResultsText = New-TestResult $msg -Result Warning
             }
             else {
-                Write-StatusMessage "Success:`r`nNDES Service account is not a member of the local Administrators group"
+                $msg = "Success:`r`nNDES Service account is not a member of the local Administrators group"
+                New-LogEntry $msg -Severity 3
+                $ResultsText = New-TestResult $msg -Result Failed
             }
+            
         }
     }
+    $ResultsText
 }
 
 function Test-Connectivity {
@@ -1240,58 +1288,72 @@ function Test-Connectivity {
         }
         
         if ($connectionTest) {
-            New-LogEntry "Connection to $uniqueURL on port $port is successful."  -Severity 1
+            $msg = "Connection to $uniqueURL on port $port is successful."  
+            New-LogEntry $msg -Severity 1
+            $ResultsText = New-TestResult -Result Passed -MoreInformation $msg
         } else {
-            New-LogEntry "Connection to $uniqueURL on port $port failed." -Severity 3  
+            $msg = "Connection to $uniqueURL on port $port failed."
+            New-LogEntry $msg -Severity 3
+            $ResultsText = New-TestResult -Result Failed -MoreInformation $msg
         }
     }
     catch {
-        New-LogEntry "Error connecting to $uniqueURL. Please test that the service account has internet access." -Severity 3
+        $msg = "Error connecting to $uniqueURL. Please test that the service account has internet access."
+        New-LogEntry $msg -Severity 3
+        $ResultsText = New-TestResult -Result Failed -MoreInformation $msg
    
     }
+    $ResultsText
 } 
 
 function Test-NDESServiceAccountLocalPermissions {
     Write-StatusMessage "Checking NDES Service Account local permissions..." -Severity 1 
     if ($SvcAcctIsComputer) { 
-        Write-StatusMessage "Skipping NDES Service Account local permissions since local system is used as the service account..." -Severity 1 
+        $msg = "Skipping NDES Service Account local permissions since local system is used as the service account..."
+        New-LogEntry $msg-Severity 1 
+        $ResultsText = New-TestResult -Result Information -MoreInformation $msg
     }
     else {
-        if ((net localgroup) -match "Administrators"){
+        if ( (net localgroup) -match "^`*Administrators$"){
 
-            $LocalAdminsMember = ((net localgroup Administrators))
-
-            if ($LocalAdminsMember -like "*$NDESServiceAccount*"){
-
-                New-LogEntry "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use the IIS_IUSERS local group instead." -Severity 2 
+            $LocalAdminsMembers = (net localgroup Administrators)
+               
+            if ($LocalAdminsMembers -like "*$NDESServiceAccount*"){
+                $msg = "NDES Service Account is a member of the local Administrators group. This will provide the requisite rights but is _not_ a secure configuration. Use the IIS_IUSERS local group instead."
+                New-LogEntry $msg -Severity 2
+                $ResultsText = New-TestResult -Result Warning -MoreInformation $msg
             }
-            else {
-                New-LogEntry "Success:`r`nNDES Service account is not a member of the local Administrators group" -Severity 1    
+            else {             
+                $msg = "Success:`r`nNDES Service account is not a member of the local Administrators group" 
+                New-LogEntry $msg-Severity 1    
+                $ResultsText = New-TestResult -Result Passed -MoreInformation $msg
             }
         }
            else { 
-                New-LogEntry "No local Administrators group exists, likely due to this being a Domain Controller or renaming the group. It is not recommended to run NDES on a Domain Controller." -Severity 2
-    
-        }
-
+                $msg = "No local Administrators group exists, likely due to this being a Domain Controller or renaming the group. It is not recommended to run NDES on a Domain Controller." 
+                New-LogEntry $msg-Severity 2
+                $ResultsText = New-TestResult -Result Warning -MoreInformation $msg
+        }   
     }
+    $ResultsText
 } 
  
 Function Test-IIS_IUSR_Membership {
-    Write-StatusMessage "Checking if the NDES service account is a member of the IIS_IUSR group..." -Severity 1\
+    Write-StatusMessage "Checking if the NDES service account is a member of the IIS_IUSR group..." -Severity 1
 
     if ($SvcAcctIsComputer) {
-        #TODO
+        $msg =  "NDES service account is running as local system. Skipping test for local IIS_IUSR group membership." 
+        New-LogEntry $msg-Severity 1    
+        $ResultsText = New-TestResult $msg -Result Information
     }
     else {
-                if ((net localgroup) -match "IIS_IUSRS"){
+        if ((net localgroup) -match "IIS_IUSRS"){
 
-            $IIS_IUSRMembers = ((net localgroup IIS_IUSRS))
+            $IIS_IUSRMembers = (net localgroup IIS_IUSRS)
 
             if ($IIS_IUSRMembers -like "*$NDESServiceAccount*"){
                 New-LogEntry "NDES service account is a member of the local IIS_IUSR group" -Severity 1    
             }
-
             else {
     
                 New-LogEntry "Error: NDES Service Account is not a member of the local IIS_IUSR group" -Severity 3 
@@ -1326,9 +1388,7 @@ Function Test-IIS_IUSR_Membership {
                     $ResultsText = New-TestResult -Result failed -MoreInformation $msg     
                 }
             }
-
         }
-
         else {
     
             $msg = @"
@@ -1338,12 +1398,12 @@ Function Test-IIS_IUSR_Membership {
                                 https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
 "@ 
             New-LogEntry $msg -Severity 3
-            $TestResult = New-TestResult -Result Failed -MoreInformation $msg
+            $ResultsText = New-TestResult -Result Failed -MoreInformation $msg
 
         }
 
     }
-    $TestResult
+    $ResultsText
 }
  
 Function Test-PFXCertificateConnectorService {
@@ -1356,23 +1416,28 @@ Function Test-PFXCertificateConnectorService {
 
         # Check if the service is running as Local System or as a specific user
         if ($serviceProcess.StartName -eq "LocalSystem") {
-            New-LogEntry "$($service.Name) is running as Local System" -Severity 1  
+            $msg = "$($service.Name) is running as Local System"
+            New-LogEntry $msg -Severity 1  
         }
         else {
-            New-LogEntry "$($service.Name) is running as $($serviceProcess.StartName)" -Severity 1  
+            $msg = "$($service.Name) is running as $($serviceProcess.StartName)" 
+            New-LogEntry $msg -Severity 1  
         }
+        $ResultsText = New-TestResult -Result Passed -MoreInformation $msg
     } 
     else {
-        New-LogEntry "PFXCertificateConnectorSvc service not found" -Severity 3  
+        $msg = "PFXCertificateConnectorSvc service not found" 
+        New-LogEntry $msg -Severity 3
+        $ResultsText = New-TestResult -Result Failed -MoreInformation $msg 
     }
-
+    $ResultsText
 }
 function Compress-LogFiles {
     param ()
 
     Write-StatusMessage "Gathering log files..."
     
-    if ($PSCmdlet.ParameterSetName -eq "Unattended") {
+    if ($PSCmdlet.ParameterSetName -eq "Unattended" ) {
         New-LogEntry "Automatically gathering files."
         $LogFileCollectionConfirmation = "y"
     }
@@ -1394,10 +1459,15 @@ function Compress-LogFiles {
         $SystemLogFilePath = [System.Environment]::ExpandEnvironmentVariables( $SystemEventLogFile)
         $registryPath = "HKLM:\SOFTWARE\Microsoft\MicrosoftIntune\PFXCertificateConnector"
 
-        
-        foreach ($IISLog in $IISLogs) {
-            Copy-Item -Path $IISLog.FullName -Destination $TempDirPath
+        if (Test-Path $IISLogPath) {
+            foreach ($IISLog in $IISLogs) {
+                Copy-Item -Path $IISLog.FullName -Destination $TempDirPath
+            }
         }
+        else {
+            New-LogEntry "Unable to find $IISLogPath" -Severity 2
+        }
+
 
         foreach ($NDESConnectorLog in $NDESConnectorLogs) {
             Copy-Item -Path $NDESConnectorLog.FullName -Destination $TempDirPath
@@ -1440,10 +1510,10 @@ function Compress-LogFiles {
         $Currentlocation = $env:temp
         $date = Get-Date -Format ddMMyyhhmmss
         Copy-Item $LogFilePath .
-        [io.compression.zipfile]::CreateFromDirectory($Script:TempDirPath, "$($Currentlocation)\$($date)-CertConnectorLogs-$($hostname).zip")
+        [io.compression.zipfile]::CreateFromDirectory($Script:TempDirPath, "$($Currentlocation)\$($date)-CertConnectorLogs-$($env:COMPUTERNAME).zip")
 
         New-LogEntry @"
-        Success: Log files copied to $($Currentlocation)\$($date)-CertConnectorLogs-$($hostname).zip"
+        Success: Log files copied to $($Currentlocation)\$($date)-CertConnectorLogs-$($env:COMPUTERNAME).zip"
 
 "@
 
@@ -1452,7 +1522,7 @@ function Compress-LogFiles {
     }
     else {
         New-LogEntry "Do not collect logs" -Severity 1
-        $Script:WriteLogOutputPath = $true
+       
     }
 }
 function Format-Log {
@@ -1767,14 +1837,14 @@ if ($usage){
  
 if ( Test-IsRSATADInstalled) {
     $mi = "RSAT AD tools are installed."
-    $ResultBlob += New-TestResult -TestName "Test-ISRSATInstalled"  -Result "Passed" -MoreInformation $mi
+    $ResultBlob += New-TestResult -TestName "Test-ISRSATADInstalled"  -Result "Passed" -MoreInformation $mi
 }
 else {
     if ($isadmin) {
         Install-RSATAD
     }
     else {
-            $ResultBlob += New-TestResult -TestName "Test-ISRSATInstalled" -Result "Warning" -MoreInformation "Unable to install RSAT AD tools. Please install from an elevated PowerShell window and then run this script again."
+            $ResultBlob += New-TestResult -TestName "Test-ISRSATADInstalled" -Result "Warning" -MoreInformation "Unable to install RSAT AD tools. Please install from an elevated PowerShell window and then run this script again."
             }
     }
 
@@ -1796,7 +1866,7 @@ $ResultBlob += Test-InstallRSATTools
 $ResultBlob += Test-IISApplicationPoolHealth
 $ResultBlob += Test-NDESInstallParameters  
 $ResultBlob += Test-HTTPParamsRegKeys  
-$ResultBlob += Test-IntermediateCerts  
+$ResultBlob += Test-IntermediateCerts   
 $ResultBlob += Test-TemplateNameRegKey
 $ResultBlob += Test-Certificates  
 $ResultBlob += Test-ServerCertificate
@@ -1845,7 +1915,7 @@ if (Test-Path $HTMLFileName){
  
 Write-StatusMessage  "End of NDES configuration validation" 
  
-if ($WriteLogOutputPath) {
+if ($odc) {
 
         New-LogEntry "Log file copied to $($LogFilePath)" -Severity 1
 
@@ -1858,8 +1928,6 @@ if ($WriteLogOutputPath) {
            
         Write-StatusMessage "Ending script..." -Severity 1
     }  
- else { 
-    New-LogEntry "Skipping log copy based on command line switches" -Severity 1
- }
+ 
 
 #endregion
