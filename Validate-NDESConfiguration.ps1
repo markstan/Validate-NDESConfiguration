@@ -483,7 +483,8 @@ function Get-TCAInfo {
         # Execute certutil -TCAInfo command
         $output = certutil.exe -TCAInfo
         if ($output) {
-            $msg = "TCAInfo:`r`n $output" 
+            $formattedOutput = $output | Out-String
+            $msg = "TCAInfo:`r`n $formattedOutput"
             New-LogEntry $msg -Severity 1
             $ResultsText = New-TestResult -Result Information -MoreInformation "Successfully wrote TCA information to log."
         } else {
@@ -510,8 +511,8 @@ $services = @(
     "PkiCreateConnectorSvc",
     "PfxCreateLegacyConnectorSvc",
     "PkiRevokeConnectorSvc"
-    "PKIConnectorSvc"
-    "WAPCSvc"
+    "PKIConnectorSvc",
+    "WAPCSvc",
     "WAPCUpdaterSvc"
 )
 
@@ -519,16 +520,17 @@ $services = @(
 foreach ($service in $services) {
     $serviceStatus = Get-Service -Name $service -ErrorAction SilentlyContinue
 
+
     if ($serviceStatus) {
-        Write-output "$service is $($serviceStatus.Status)"
+        $msg = "$service is $($serviceStatus.Status)"
+        New-LogEntry $msg
         	
     } else {
-        Write-output "$service not found"
-        
+        $msg = "$service not found"
+        New-LogEntry $msg
     }
 }
 }
-
 function Get-ConnectorCertificate {
 #Checking the validity of the Microsoft Intune ImportPFX Connector Certificate"
 Write-StatusMessage "Checking Microsoft Itnne ImportPFX Connector Certificate"
@@ -855,33 +857,30 @@ c    }
 function Test-TemplateNameRegKey {
     param ()
 
-    Write-StatusMessage "Checking registry 'HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP' has been set with the SCEP certificate template name..."
+    Write-StatusMessage "Checking if registry 'HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP' has been set with the SCEP certificate template name..."
 
-    if (-not (Test-Path HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP)) {
+    if (-not (Test-Path "HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP")) {
         $msg = @"
                     Error: Registry key does not exist. This can occur if the NDES role has been installed but not configured.
                     Please review this article:
                         https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
-"@ 
-    New-LogEntry $msg-Severity 3
-    $TestResult = New-TestResult  -Result Failed -MoreInformation $msg
+"@
+        New-LogEntry -Message $msg -Severity 3
+        $TestResult = New-TestResult -Result "Failed" -MoreInformation $msg
     }
     else {
-        $SignatureTemplate       = (Get-ItemProperty -Path HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP\ -Name SignatureTemplate).SignatureTemplate
-        $EncryptionTemplate      = (Get-ItemProperty -Path HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP\ -Name EncryptionTemplate).EncryptionTemplate
-        $GeneralPurposeTemplate  = (Get-ItemProperty -Path HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP\ -Name GeneralPurposeTemplate).GeneralPurposeTemplate
-        $DefaultUsageTemplate    = "IPSECIntermediateOffline"
+        $SignatureTemplate = (Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP" -Name "SignatureTemplate").SignatureTemplate
+        $EncryptionTemplate = (Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP" -Name "EncryptionTemplate").EncryptionTemplate
+        $GeneralPurposeTemplate = (Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Cryptography\MSCEP" -Name "GeneralPurposeTemplate").GeneralPurposeTemplate
+        $DefaultUsageTemplate = "IPSECIntermediateOffline"
 
-        if ($SignatureTemplate -match $DefaultUsageTemplate -and $EncryptionTemplate -match $DefaultUsageTemplate -and $GeneralPurposeTemplate -match $DefaultUsageTemplate) {
         $msg = @"
-            Error: Registry has not been configured with the SCEP Certificate template name. Default values have _not_ been changed.
-            Please review this article: 
-                https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
-"@ 
-        New-LogEntry $msg -Severity 3 
-        $TestResult = New-TestResult  -Result Failed
-        }
-    $TestResult
+                   Signature Template Configured is: $SignatureTemplate
+                   Encryption Template Configured is: $EncryptionTemplate
+                   General Purpose Template Configured is: $GeneralPurposeTemplate
+"@
+
+        New-LogEntry -Message $msg -Severity 1
     }
 }
 
@@ -1076,10 +1075,7 @@ function Test-IntuneConnectorInstall {
         Please review this article:
             https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
 "@ -Severity 3
- 
-    }
-    else{
-        $ResultsText = New-TestResult "Intune Certificate Connector is not installed" -Result Failed
+         $ResultsText = New-TestResult "Intune Certificate Connector is not installed" -Result Failed
     }
     $ResultsText
 }
@@ -1877,7 +1873,6 @@ $ResultBlob += Test-ClientCertificate
 $ResultBlob += Test-WindowsFeaturesInstalled 
 $ResultBlob += Test-NDESServiceAccountLocalPermissions -NDESServiceAccount $NDESServiceAccount
 $ResultBlob += Test-SPN -ADAccount $NDESServiceAccount
-$ResultBlob += Test-PFXCertificateConnectorService
 $ResultBlob += Test-IIS_IUSR_Membership
 $ResultBlob += Test-IIS_Log
 $ResultBlob += Get-TCAInfo
