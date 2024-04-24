@@ -575,11 +575,11 @@ function Initialize-LogFile {
       
     Write-StatusMessage @"
     Initializing log file:
-         $LogFilePath 
+    $LogFilePath 
     Proceeding with variables=YES 
     NDESServiceAccount = $NDESServiceAccount
     IssuingCAServer= $IssuingCAServerFQDN
-     SCEPCertificateTemplate= $SCEPUserCertTemplate
+    SCEPCertificateTemplate= $SCEPUserCertTemplate
 "@ -Severity 1
 }
 
@@ -824,7 +824,7 @@ function Test-Certificates {
     # Check if EnrollmentAgentOffline certificate is present
 
     if ($EnrollmentAgentOffline) {    
-        New-LogEntry "Success: `r`nEnrollmentAgentOffline certificate is present and valid till:$($EnrollmentAgentOfflineNotAfter)" -Severity 1
+        New-LogEntry "Success: EnrollmentAgentOffline certificate is present and valid till: $($EnrollmentAgentOfflineNotAfter)" -Severity 1
 c    }
     else {
        
@@ -838,7 +838,7 @@ c    }
     
     # Check if CEPEncryption certificate is present
     if ($CEPEncryption) {
-         New-LogEntry "Success: CEPEncryption certificate is present and valid until: $($CEPEncryptionNotAfter)" -Severity 1
+         New-LogEntry "Success: CEPEncryption certificate is present and valid till: $($CEPEncryptionNotAfter)" -Severity 1
     }
     else { 
        New-LogEntry @"
@@ -875,9 +875,9 @@ function Test-TemplateNameRegKey {
         $DefaultUsageTemplate = "IPSECIntermediateOffline"
 
         $msg = @"
-                   Signature Template Configured is: $SignatureTemplate
-                   Encryption Template Configured is: $EncryptionTemplate
-                   General Purpose Template Configured is: $GeneralPurposeTemplate
+        Signature Template Configured is: $SignatureTemplate
+        Encryption Template Configured is: $EncryptionTemplate
+        General Purpose Template Configured is: $GeneralPurposeTemplate
 "@
 
         New-LogEntry -Message $msg -Severity 1
@@ -1084,16 +1084,17 @@ function Test-IIS_Log {
 
     if ($isadmin) {
         # Specify the path to the IIS log files
-        $logPath = Join-Path  (Get-IISSite).LogFile.Directory "W3SVC1"
+        $IISlogPath = (Get-WebConfigurationProperty -PSPath "IIS:\Sites\Default Web Site" -Filter "system.applicationHost/sites/siteDefaults/logFile" -Name "directory").Value + "\W3SVC1"
+      
         $logObjects = @()
 
         # Specify the pattern to search for in the log files
         $logPattern = "*certsrv/mscep/mscep.dll*"
 
         # Get the latest log file
-        if (Test-Path $logPath) 
+        if (Test-Path $IISlogPath) 
         {
-            $logFiles = Get-ChildItem -Path $logPath | Sort-Object LastWriteTime -Descending | Select-Object -First 2
+            $logFiles = Get-ChildItem -Path $IISlogPath | Sort-Object LastWriteTime -Descending | Select-Object -First 2
 
         if ($null -ne $logFiles) {
             
@@ -1132,7 +1133,7 @@ function Test-IIS_Log {
         }
 
             if ($RecentrequestinIIS) {
-                New-LogEntry $RecentrequestinIIS 
+                New-LogEntry $RecentrequestinIIS -Severity 1
                 $ResultsText = New-TestResult -Result Passed -MoreInformation $RecentrequestinIIS
             }
             } else {
@@ -1143,7 +1144,7 @@ function Test-IIS_Log {
         }
         else {
             
-            $msg = "Cannot find path $logPath." 
+            $msg = "Cannot find path $IISlogPath." 
             New-LogEntry $msg -Severity 2
             $ResultsText = New-TestResult -Result Warning -MoreInformation $msg
         }
@@ -1162,14 +1163,20 @@ function Get-EventLogData {
     )
     Write-StatusMessage "Checking Event logs for relevent errors" -Severity 1
 
-    if (-not (Get-EventLog -LogName "Microsoft Intune Connector" -EntryType Error -After (Get-Date).AddDays(-$EventLogCollDays) -ErrorAction SilentlyContinue)) {
- 
+    $ConnectorlogAdmin = "Microsoft-Intune-CertificateConnectors/Admin"
+    #check last 2 days event log
+    $EventstartTime = (Get-Date).AddDays(-2)    
+
+   # if (-not (Get-EventLog -LogName "Microsoft Intune Connector" -EntryType Error -After (Get-Date).AddDays(-$EventLogCollDays) -ErrorAction SilentlyContinue)) {
+    #Get-eventlog doesn't work for non-system build-in event, use get-winEventinstead
+    if (-not (Get-WinEvent -FilterHashtable @{LogName=$ConnectorlogAdmin;StartTime=$EventstartTime;ID='1001','1201','2001','3001','4001','4002'} -MaxEvents 5 -ErrorAction SilentlyContinue)){
         New-LogEntry "Success: No errors found in the Microsoft Intune Connector" -Severity 1
     }
     else {
         New-LogEntry "Errors found in the Microsoft Intune Connector Event log. Please see below for the most recent 5, and investigate further in Event Viewer." -Severity 2
          
-        $EventsCol1 = Get-EventLog -LogName "Microsoft Intune Connector" -EntryType Error -After (Get-Date).AddDays(-$EventLogCollDays) -Newest 5 | Select-Object TimeGenerated, Source, Message
+        # $EventsCol1 = Get-EventLog -LogName "Microsoft Intune Connector" -EntryType Error -After (Get-Date).AddDays(-$EventLogCollDays) -Newest 5 | Select-Object TimeGenerated, Source, Message
+        $EventsCol1 = Get-WinEvent -FilterHashtable @{LogName=$ConnectorlogAdmin;StartTime=$EventstartTime} -MaxEvents 5 -ErrorAction SilentlyContinue
         $EventsCol1 | Format-List
         New-LogEntry "Errors found in the Microsoft Intune Connector Event log" NDES_Eventvwr 3
         $i = 0 
@@ -1339,7 +1346,7 @@ Function Test-IIS_IUSR_Membership {
 
     if ($SvcAcctIsComputer) {
         $msg =  "NDES service account is running as local system. Skipping test for local IIS_IUSR group membership." 
-        New-LogEntry $msg-Severity 1    
+        New-LogEntry $msg -Severity 1    
         $ResultsText = New-TestResult $msg -Result Information
     }
     else {
@@ -1367,12 +1374,12 @@ Function Test-IIS_IUSR_Membership {
                 if ($LocalSecPolResults -match "SeInteractiveLogonRight" -and $LocalSecPolResults -match "SeBatchLogonRight" -and $LocalSecPolResults -match "SeServiceLogonRight"){
             
                     $msg = @"                    
-                        Success: 
-                        NDES Service Account has been assigned 'Logon Locally', 'Logon as a Service' and 'Logon as a batch job' rights explicitly.
-
-                        Note:
-                        Consider using the IIS_IUSERS group instead of explicit rights as described in this article:
-                        https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
+                    Success: 
+                    NDES Service Account has been assigned 'Logon Locally', 'Logon as a Service' and 'Logon as a batch job' rights explicitly.
+                    
+                    Note:
+                    Consider using the IIS_IUSERS group instead of explicit rights as described in this article:
+                    https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
 "@
                 New-LogEntry $msg -Severity 1
                 $ResultsText = New-TestResult -Result Passed -MoreInformation $msg
@@ -1388,10 +1395,9 @@ Function Test-IIS_IUSR_Membership {
         else {
     
             $msg = @"
-                            No IIS_IUSRS group exists. Ensure IIS is installed.
-
-                            Please review the following article for more information:
-                                https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
+            No IIS_IUSRS group exists. Ensure IIS is installed.
+            Please review the following article for more information:
+            https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
 "@ 
             New-LogEntry $msg -Severity 3
             $ResultsText = New-TestResult -Result Failed -MoreInformation $msg
