@@ -1134,9 +1134,12 @@ function Test-IIS_Log {
 
             if ($RecentrequestinIIS) {
 
-                New-LogEntry "Find SCEP request in IIS log." -Severity 1 
-                New-LogEntry $RecentrequestinIIS
-                $ResultsText = New-TestResult -Result Passed -MoreInformation $RecentrequestinIIS
+                New-LogEntry "Found SCEP request in IIS log: " -Severity 1 
+                foreach($CertRequest in $RecentrequestinIIS)
+                {
+                    New-LogEntry "$($CertRequest)" -Severity 1 
+                }
+                $ResultsText = New-TestResult -Result Passed -MoreInformation $RecentrequestinIIS[0].ToString()   
             }
             } else {
                 $msg = "No log files found in the specified path." 
