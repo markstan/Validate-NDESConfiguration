@@ -1133,7 +1133,9 @@ function Test-IIS_Log {
         }
 
             if ($RecentrequestinIIS) {
-                New-LogEntry $RecentrequestinIIS -Severity 1
+
+                New-LogEntry "Find SCEP request in IIS log." -Severity 1 
+                New-LogEntry $RecentrequestinIIS
                 $ResultsText = New-TestResult -Result Passed -MoreInformation $RecentrequestinIIS
             }
             } else {
