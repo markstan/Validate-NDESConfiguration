@@ -1004,49 +1004,44 @@ function Test-ClientCertificate {
 "@ -Severity 3
     }
 }
- 
+
 function Test-InternalNdesUrl {
       
     $hostname = ([System.Net.Dns]::GetHostByName(($env:computerName))).hostname
            
     Write-StatusMessage "Checking behaviour of internal NDES URL at Https://$hostname/certsrv/mscep/mscep.dll" -Severity 1
 
-    $Statuscode = try {
-        (Invoke-WebRequest -Uri "https://$hostname/certsrv/mscep/mscep.dll").StatusCode
-    } catch { 
-        $_ | New-LogEntry -Severity 3
+    # URL To check
+$hostname = ([System.Net.Dns]::GetHostByName(($env:computerName))).hostname
+$url = "https://$hostname/certsrv/mscep/mscep.dll"  # Replace with the desired URL
+
+try {
+   $response = Invoke-WebRequest -Uri $url -UseBasicParsing
+   Write-statusmessage "$($response.StatusCode)"
+}
+catch [System.Net.WebException] {
+       $webResponse = $_.Exception.Response
+    if ($webResponse -ne $null) {
+        $statusCode = [int]$webResponse.StatusCode
+        if ($statusCode -eq 403) {
+            $msg = "URL Response is 403 - Intune Connector is installed"
+            New-LogEntry $msg -Severity 1
+        } else {
+            $msg = "URL response $($Statuscode) : Unexpected Error code. This usually signifies an error with the Intune Connector registering itself or not being installed.
+                     Expected value is a 403. We received a $($Statuscode). This could be down to a missing reboot after the policy module installation. 
+                     Verify last boot time and module install time further down the validation." 
+            New-LogEntry $msg -Severity 3
+            
+        }
     }
-
-    if ($statuscode -eq "200") { 
-        New-LogEntry "https://$hostname/certsrv/mscep/mscep.dll returns 200 OK. This usually signifies an error with the Intune Connector registering itself or the service is not installed" -Severity 3
-    } elseif ($statuscode -eq "403") {
-        New-LogEntry "Trying to retrieve CA Capabilities..." 
-         
-        try {
-            $Newstatuscode = (Invoke-WebRequest -Uri "https://$hostname/certsrv/mscep/mscep.dll?operation=GetCACaps`&message=test").StatusCode
-        } catch {
-            $_.Exception.Response.StatusCode.Value__
-        }
-
-        if ($Newstatuscode -eq "200") {
-            $CACaps = (Invoke-WebRequest -Uri "https://$hostname/certsrv/mscep?operation=GetCACaps`&message=test").Content
-        }
-
-        if ($CACaps) {
-            New-LogEntry "Success:`r`nCA Capabilities retrieved:`r`n" -Severity 1             
-            New-LogEntry $CACaps  -Severity 1
-        }
-    } else {
-        New-LogEntry @"
-        
-        Error: Unexpected Error code. This usually signifies an error with the Intune Connector registering itself or not being installed.
-        Expected value is a 403. We received a $($Statuscode). This could be down to a missing reboot after the policy module installation. 
-        Verify last boot time and module install time further down the validation.
-"@ -Severity 3
- 
+    else {
+        Write-Output "Error: Unable to reach $($url)"
     }
-   }
-        
+}
+catch {
+       Write-Output "An unexpected error occurred"
+}
+}
 function Test-LastBootTime {
       
     Write-StatusMessage "Checking last boot time of the server" -Severity 1
