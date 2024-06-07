@@ -726,46 +726,27 @@ function Test-HTTPParamsRegKeys {
 }
  
 function Test-SPN {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$ADAccount
-    )
+    Write-StatusMessage "Checking SPN has been set..." -Severity 1
+    $hostname = ([System.Net.Dns]::GetHostEntry($env:COMPUTERNAME)).hostname
+    $svcaccount = Get-Item "IIS:\AppPools\SCEP" | Select-Object -ExpandProperty processmodel | Select-Object -ExpandProperty username
+    $spn = & setspn.exe -L $svcaccount
 
-    Write-StatusMessage "Checking SPN has been set..."  -Severity 1
-
-    # localsystem
-    if ($SvcAcctIsComputer) {
-# TODO
-    }
-    # named AD account
-    else {
-        $hostname = ([System.Net.Dns]::GetHostByName(($env:computerName))).hostname
-
-        $spn = setspn.exe -L $ADAccount
-
-        if ($spn -match $hostname){
-            $msg = @"
-            Success. Correct SPN set for the NDES service account:
-            
-            $spn
-"@ 
-        New-LogEntry $msg -Severity 1 
+    if ($spn -match $hostname) {
+        $msg = "Success. Correct SPN set for the NDES service account: $spn"
+        New-LogEntry $msg -Severity 1
         $TestResult = New-TestResult -Result Passed -MoreInformation $msg
-        }
-        else {
-            $msg = @"
-            Error: Missing or Incorrect SPN set for the NDES Service Account.
-            Please review this article:
-            URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure 
-"@ 
-        New-LogEntry $msg -Severity 3 
-        $TestResult = New-TestResult -Result Failed -MoreInformation $msg
-        }
-
     }
-    $TestResult
-
+    else {
+        $msg = @"
+Error: Missing or Incorrect SPN set for the NDES Service Account.
+Please review this article:
+URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure
+"@
+        New-LogEntry $msg -Severity 3
+        $TestResult = New-TestResult -Result Failed -MoreInformation $msg
+    }
 }
+
  
 function Test-IntermediateCerts {
     param ()
