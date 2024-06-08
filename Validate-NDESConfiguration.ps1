@@ -563,24 +563,10 @@ if ($matchingCerts.Count -gt 0) {
     
 }
 }
-
-function Test-Connectivity {
-    param(
-        # parameters here
-    )
-    # function code here
-}
  
 function Initialize-LogFile {
-      
     Write-StatusMessage @"
-    Initializing log file:
-    $LogFilePath 
-    Proceeding with variables=YES 
-    NDESServiceAccount = $NDESServiceAccount
-    IssuingCAServer= $IssuingCAServerFQDN
-    SCEPCertificateTemplate= $SCEPUserCertTemplate
-"@ -Severity 1
+    Initializing log file: $LogFilePath "@ -Severity 1
 }
 
 function Test-InstallRSATTools {
