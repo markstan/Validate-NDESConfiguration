@@ -565,8 +565,7 @@ if ($matchingCerts.Count -gt 0) {
 }
  
 function Initialize-LogFile {
-    Write-StatusMessage @"
-    Initializing log file: $LogFilePath "@ -Severity 1
+    Write-StatusMessage "Initializing log file: $LogFilePath" -Severity 1
 }
 
 function Test-InstallRSATTools {
@@ -642,13 +641,10 @@ function Test-IISApplicationPoolHealth {
             else {    
                 New-LogEntry "Error: SCEP Application Pool is stopped.`r`n`t`tPlease start the SCEP Application Pool via IIS Management Console. You should also review the Application Event log output for errors." -Severity 3                    
             }    
-        }
     
         else {     
             New-LogEntry "Error: IIS is not installed" -Severity 3     
         }
-    
-}
  
 function Test-NDESInstallParameters {
     param ()
