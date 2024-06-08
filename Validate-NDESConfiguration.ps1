@@ -599,53 +599,46 @@ function Test-WindowsFeaturesInstalled {
 function Test-IISApplicationPoolHealth {
     Write-StatusMessage "Checking IIS Application Pool health..." -Severity 1
     
-        if (-not ($IISNotInstalled -eq $true)){
-    
-            # If SCEP AppPool Exists    
-            if (Test-Path 'IIS:\AppPools\SCEP'){
-    
-                $IISSCEPAppPoolAccount = Get-Item 'IIS:\AppPools\SCEP' | Select-Object -expandproperty processmodel | Select-Object -Expand username
-                
-                if ( (Get-WebAppPoolState "SCEP").value -match "Started" ){            
-                    $SCEPAppPoolRunning = $true            
-                }
-            }    
-            else {    
-                New-LogEntry @"
-                Error: SCEP Application Pool missing.
-                Please review this document: 
-                URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure 
+    if (-not ($IISNotInstalled -eq $true)){
+        # If SCEP AppPool Exists    
+        if (Test-Path 'IIS:\AppPools\SCEP'){
+            $IISSCEPAppPoolAccount = Get-Item 'IIS:\AppPools\SCEP' | Select-Object -expandproperty processmodel | Select-Object -ExpandProperty username
+            
+            if ( (Get-WebAppPoolState "SCEP").value -match "Started" ){            
+                $SCEPAppPoolRunning = $true            
+            }
+        } else {    
+            New-LogEntry @"
+            Error: SCEP Application Pool missing.
+            Please review this document: 
+            URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure 
 "@ -Severity 3            
-            }
-        
-            if ($SvcAcctIsComputer) {                  
-                New-LogEntry "Skipping application pool account check since local system is used as the service account" -Severity 2
-            }
-            else {
-                if ($IISSCEPAppPoolAccount -contains "$NDESServiceAccount"){                
-                    New-LogEntry "Application Pool is configured to use $($IISSCEPAppPoolAccount)" -Severity 1                
-                }                
-                else {    
-                    New-LogEntry @"
-                    Error: Application Pool is not configured to use the NDES Service Account
-                    Please review this article:
-                    URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure" 
-                    Application Pool is not configured to use the NDES Service Account
-"@ -Severity 3                
-                }
-            }
-                    
-            if ($SCEPAppPoolRunning){                    
-                New-LogEntry "Success: SCEP Application Pool is Started" -Severity 1                    
-            }                    
-            else {    
-                New-LogEntry "Error: SCEP Application Pool is stopped.`r`n`t`tPlease start the SCEP Application Pool via IIS Management Console. You should also review the Application Event log output for errors." -Severity 3                    
-            }    
-    
-        else {     
-            New-LogEntry "Error: IIS is not installed" -Severity 3     
         }
- 
+    
+        if ($SvcAcctIsComputer) {                  
+            New-LogEntry "Skipping application pool account check since local system is used as the service account" -Severity 2
+        } else {
+            if ($IISSCEPAppPoolAccount -contains "$NDESServiceAccount"){                
+                New-LogEntry "Application Pool is configured to use $($IISSCEPAppPoolAccount)" -Severity 1                
+            } else {    
+                New-LogEntry @"
+                Error: Application Pool is not configured to use the NDES Service Account
+                Please review this article:
+                URL: https://learn.microsoft.com/en-us/mem/intune/protect/certificates-scep-configure 
+"@ -Severity 3                
+            }
+        }
+                
+        if ($SCEPAppPoolRunning){                    
+            New-LogEntry "Success: SCEP Application Pool is Started" -Severity 1                    
+        } else {    
+            New-LogEntry "Error: SCEP Application Pool is stopped.`r`n`t`tPlease start the SCEP Application Pool via IIS Management Console. You should also review the Application Event log output for errors." -Severity 3                    
+        }    
+    } else {     
+        New-LogEntry "Error: IIS is not installed" -Severity 3     
+    }
+}
+
 function Test-NDESInstallParameters {
     param ()
 
