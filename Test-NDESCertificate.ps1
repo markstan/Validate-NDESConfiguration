@@ -1,4 +1,19 @@
-# Prompt user for subject name
+<#
+.SYNOPSIS
+Test-NDESCertificate issues a test certificate based on the configuration in NDES server.
+
+.DESCRIPTION
+Test-NDESCertificate validates the template configuration and the permissions on the template by issuing a test certificate using the service account.
+.NOTE This script is used purely to validate the configuration. All remedial tasks will need to be carried out manually.
+
+.EXAMPLE
+.\Test-NDESCertificate
+
+.NOTES
+v1.0 - 06/10/2024 - Initial release.
+
+#>
+
 $subjectName = Read-Host -Prompt 'Enter subject name (e.g., CN=yoursubjectname)'
 $altname = Read-Host -Prompt 'Enter SubjectAlternativename (e.g., upn=user1@contoso.com)'
 
