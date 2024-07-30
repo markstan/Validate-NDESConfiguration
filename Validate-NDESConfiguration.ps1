@@ -658,7 +658,7 @@ function Test-NDESInstallParameters {
          
         New-LogEntry $InstallParams.Message
         New-LogEntry "Correct CSP used in install parameters:" -Severity 1
-        New-LogEntry "$($InstallParams.Message)" NDES_Eventvwr 1
+        New-LogEntry "$($InstallParams.Message)" -Severity 1
 
     }
     else {
@@ -1134,11 +1134,11 @@ function Get-EventLogData {
         # $EventsCol1 = Get-EventLog -LogName "Microsoft Intune Connector" -EntryType Error -After (Get-Date).AddDays(-$EventLogCollDays) -Newest 5 | Select-Object TimeGenerated, Source, Message
         $EventsCol1 = Get-WinEvent -FilterHashtable @{LogName=$ConnectorlogAdmin;StartTime=$EventstartTime} -MaxEvents 5 -ErrorAction SilentlyContinue
         $EventsCol1 | Format-List
-        New-LogEntry "Errors found in the Microsoft Intune Connector Event log" NDES_Eventvwr 3
+        New-LogEntry "Errors found in the Microsoft Intune Connector Event log" -Severity 3
         $i = 0 
 
         foreach ($item in $EventsCol1) {
-            New-LogEntry "$($EventsCol1[$i].TimeGenerated);$($EventsCol1[$i].Message);$($EventsCol1[$i].Source)" NDES_Eventvwr 3
+            New-LogEntry "$($EventsCol1[$i].TimeGenerated);$($EventsCol1[$i].Message);$($EventsCol1[$i].Source)" -Severity 3
             $i++
         }
     }
@@ -1192,7 +1192,7 @@ function Test-NDESServiceAccountProperties {
 } 
 
 function Test-NDESServiceAccountLocalPermissions {
-    Write-StatusMessage "Checking NDES Service Account local permissions..."   -Severity 1 
+    Write-StatusMessage "Checking NDES Service Account local permissions..."
 
     if ($SvcAcctIsComputer) { 
         Write-StatusMessage "Skipping NDES Service Account local permissions since local system is used as the service account..." -Severity 1
