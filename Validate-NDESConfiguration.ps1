@@ -1409,6 +1409,7 @@ function Compress-LogFiles {
         $IISLogs = Get-ChildItem $IISLogPath | Sort-Object -Descending -Property LastWriteTime | Select-Object -First 3
         $NDESConnectorLogs = Get-ChildItem "$env:SystemRoot\System32\Winevt\Logs\Microsoft-Intune-CertificateConnectors*"
         $NDESConnectorUpdateAgentLogs = Get-ChildItem "$env:SystemRoot\System32\Winevt\Logs\Microsoft-AzureADConnect-AgentUpdater*"
+        $CAPI2Logs = Get-ChildItem "$env:SystemRoot\System32\Winevt\Logs\Microsoft-Windows-CAPI2%4Operational*"
         
         $ApplicationEventLogFile = Get-WinEvent -ListLog "Application" | Select-Object -ExpandProperty LogFilePath
         $ApplicationLogFilePath = [System.Environment]::ExpandEnvironmentVariables( $ApplicationEventLogFile)
@@ -1426,11 +1427,14 @@ function Compress-LogFiles {
             New-LogEntry "Unable to find $IISLogPath" -Severity 2
         }
 
-
         foreach ($NDESConnectorLog in $NDESConnectorLogs) {
             Copy-Item -Path $NDESConnectorLog.FullName -Destination $TempDirPath
         }
 
+        foreach ($CAPI2Logs in $CAPI2Logs) {
+            Copy-Item -Path $CAPI2Logs.FullName -Destination $TempDirPath
+        }
+        
         foreach ($NDESConnectorUpdateAgentLog in $NDESConnectorUpdateAgentLogs) {
             Copy-Item -Path $NDESConnectorUpdateAgentLog.FullName -Destination $TempDirPath
         }
