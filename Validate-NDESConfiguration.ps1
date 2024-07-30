@@ -1269,7 +1269,7 @@ function Test-NDESServiceAccountLocalPermissions {
     Write-StatusMessage "Checking NDES Service Account local permissions..." -Severity 1 
     if ($SvcAcctIsComputer) { 
         $msg = "Skipping NDES Service Account local permissions since local system is used as the service account..."
-        New-LogEntry $msg-Severity 1 
+        New-LogEntry $msg -Severity 1 
         $ResultsText = New-TestResult -Result Information -MoreInformation $msg
     }
     else {
